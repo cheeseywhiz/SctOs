@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 enum vga_color {
+    /* fg/bg */
     VGA_COLOR_BLACK,
     VGA_COLOR_BLUE,
     VGA_COLOR_GREEN,
@@ -11,6 +12,7 @@ enum vga_color {
     VGA_COLOR_MAGENTA,
     VGA_COLOR_BROWN,
     VGA_COLOR_LIGHT_GRAY,
+    /* fg only */
     VGA_COLOR_DARK_GRAY,
     VGA_COLOR_LIGHT_BLUE,
     VGA_COLOR_LIGHT_GREEN,
@@ -24,6 +26,8 @@ enum vga_color {
 #define VGA_WIDTH 80
 #define VGA_HEIGHT 25
 static volatile uint16_t *const vga_port = (volatile uint16_t*)0xB8000;
+
+void vga_scroll(size_t n);
 
 static inline uint8_t
 vga_entry_color(enum vga_color fg, enum vga_color bg) {
@@ -44,13 +48,4 @@ vga_at(size_t x, size_t y) {
 static inline void
 vga_write(char c, uint8_t color, size_t x, size_t y) {
     *vga_at(x, y) = vga_entry(c, color);
-}
-
-static inline void
-vga_scroll(size_t n) {
-    for (size_t y = n; y < VGA_HEIGHT; ++y) {
-        for (size_t x = 0; x < VGA_WIDTH; ++x) {
-            *vga_at(x, y - n) = *vga_at(x, y);
-        }
-    }
 }
