@@ -8,36 +8,45 @@ extern size_t terminal_row;
 extern size_t terminal_column;
 extern uint8_t terminal_color;
 
-static inline void
-terminal_initialize(void) {
-    terminal_row = 0;
-    terminal_column = 0;
-    terminal_color = vga_entry_color(VGA_COLOR_LIGHT_GRAY, VGA_COLOR_BLACK);
+void terminal_initialize(void);
+void terminal_scroll(size_t n);
+void terminal_write(const char *data, size_t size);
 
-    for (size_t y = 0; y < VGA_HEIGHT; ++y) {
-        for (size_t x = 0; x < VGA_WIDTH; ++x)
-            vga_write(' ', terminal_color, x, y);
+static inline void
+terminal_clear_char(size_t x, size_t y) {
+    vga_write(' ', terminal_color, x, y);
+}
+
+static inline void
+terminal_inc_row(size_t n) {
+    terminal_row += n;
+
+    if (terminal_row >= VGA_HEIGHT) {
+        terminal_scroll(terminal_row - VGA_HEIGHT + 1);
+        terminal_row = VGA_HEIGHT - 1;
+    }
+}
+
+static inline void
+terminal_inc_column(size_t n) {
+    terminal_column += n;
+
+    if (terminal_column >= VGA_WIDTH) {
+        terminal_inc_row(1);
+        terminal_column = 0;
     }
 }
 
 static inline void
 terminal_putchar(char c) {
-    vga_write(c, terminal_color, terminal_column, terminal_row);
-
-    if (++terminal_column == VGA_WIDTH) {
+    if (c == '\n') {
+        terminal_inc_row(1);
         terminal_column = 0;
-
-        if (++terminal_row == VGA_HEIGHT)
-            terminal_row = 0;
+    } else {
+        vga_write(c, terminal_color, terminal_column, terminal_row);
+        terminal_inc_column(1);
     }
 }
-
-static inline void
-terminal_write(const char *data, size_t size) {
-    for (size_t i = 0; i < size; ++i)
-        terminal_putchar(data[i]);
-}
-
 
 static inline void
 terminal_writestring(const char *data) {

@@ -35,8 +35,22 @@ vga_entry(unsigned char uc, uint8_t entry_color) {
     return ((uint16_t)entry_color << 8) | (uint16_t)uc;
 }
 
+static inline volatile uint16_t*
+vga_at(size_t x, size_t y) {
+    const size_t index = y * VGA_WIDTH + x;
+    return &vga_port[index];
+}
+
 static inline void
 vga_write(char c, uint8_t color, size_t x, size_t y) {
-    const size_t index = y * VGA_WIDTH + x;
-    vga_port[index] = vga_entry(c, color);
+    *vga_at(x, y) = vga_entry(c, color);
+}
+
+static inline void
+vga_scroll(size_t n) {
+    for (size_t y = n; y < VGA_HEIGHT; ++y) {
+        for (size_t x = 0; x < VGA_WIDTH; ++x) {
+            *vga_at(x, y - n) = *vga_at(x, y);
+        }
+    }
 }

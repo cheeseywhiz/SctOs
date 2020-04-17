@@ -11,5 +11,15 @@
 void
 kernel_main(void) {
     terminal_initialize();
-    terminal_writestring("Hello, kernel world!\n");
+
+    /* with adding one it says goodbye at the top,
+     * without it says hello at the top,
+     * which should indicate scroll is working
+     */
+    for (int i = 0; i < VGA_HEIGHT + 1; ++i) {
+        if (i % 2)
+            terminal_writestring("Hello, kernel world!\n");
+        else
+            terminal_writestring("Goodbye, kernel world!\n");
+    }
 }
