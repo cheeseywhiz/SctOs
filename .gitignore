@@ -1,0 +1,5 @@
+cross
+.clangd
+*.o
+SctOs
+compile_commands.json
