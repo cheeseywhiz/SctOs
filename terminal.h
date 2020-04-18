@@ -13,6 +13,11 @@ void terminal_scroll(size_t n);
 void terminal_write(const char *data, size_t size);
 
 static inline void
+terminal_writestring(const char *data) {
+    terminal_write(data, strlen(data));
+}
+
+static inline void
 terminal_clear_char(size_t x, size_t y) {
     vga_write(' ', terminal_color, x, y);
 }
@@ -42,13 +47,12 @@ terminal_putchar(char c) {
     if (c == '\n') {
         terminal_inc_row(1);
         terminal_column = 0;
+    } else if (c == '\t') {
+        do {
+            terminal_inc_column(1);
+        } while (terminal_column % 8);
     } else {
         vga_write(c, terminal_color, terminal_column, terminal_row);
         terminal_inc_column(1);
     }
-}
-
-static inline void
-terminal_writestring(const char *data) {
-    terminal_write(data, strlen(data));
 }

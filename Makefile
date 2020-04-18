@@ -25,6 +25,7 @@ deps:
 	$(CC) $(CFLAGS) -MM $(C_SOURCES) | tee -a Makefile
 
 # deps:
-kernel.o: kernel.c vga.h string.h terminal.h
+kernel.o: kernel.c string.h terminal.h vga.h
+string.o: string.c string.h terminal.h vga.h
 terminal.o: terminal.c terminal.h string.h vga.h
 vga.o: vga.c vga.h
