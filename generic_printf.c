@@ -1,20 +1,24 @@
+#include "generic_printf.h"
 #include "string.h"
-#include "terminal.h"
 #include <stdarg.h>
 #include <stdbool.h>
 
-static void kput_int(long long);
-static void kput_unsigned(unsigned long long);
-static void kput_hex(unsigned);
-static void kput_ul_hex(size_t);
-static void kputs(const char*);
+static void put_int(write_func, long long);
+static void put_unsigned(write_func, unsigned long long);
+static void put_hex(write_func, unsigned);
+static void put_ul_hex(write_func, size_t);
+static void putc(write_func, char);
+static void puts(write_func, const char*);
+
+static const char *const digits = "fedcba9876543210123456789abcdef";
+#define GET_DIGIT(n, base) (digits[(n) % (base) + 15])
 
 void
-kprintf(const char *format, ...) {
+generic_printf(write_func write, const char *format, ...) {
     const char *first, *last;
+    va_list ap;
     bool format_mode = false;
     int n_long = 0;
-    va_list ap;
     va_start(ap, format);
 
     for (first = last = format; *last; ++last) {
@@ -22,7 +26,7 @@ kprintf(const char *format, ...) {
             if (format_mode)
                 first = last;
             else
-                terminal_write(first, last - first);
+                write(first, last - first);
 
             format_mode = !format_mode;
             continue;
@@ -40,13 +44,13 @@ kprintf(const char *format, ...) {
         case 'd':
             switch(n_long) {
             case 0:
-                kput_int(va_arg(ap, int));
+                put_int(write, va_arg(ap, int));
                 break;
             case 1:
-                kput_int(va_arg(ap, long));
+                put_int(write, va_arg(ap, long));
                 break;
             case 2:
-                kput_int(va_arg(ap, long long));
+                put_int(write, va_arg(ap, long long));
                 break;
             }
 
@@ -55,32 +59,32 @@ kprintf(const char *format, ...) {
         case 'u':
             switch (n_long) {
             case 0:
-                kput_unsigned(va_arg(ap, unsigned));
+                put_unsigned(write, va_arg(ap, unsigned));
                 break;
             case 1:
-                kput_unsigned(va_arg(ap, unsigned long));
+                put_unsigned(write, va_arg(ap, unsigned long));
                 break;
             case 2:
-                kput_unsigned(va_arg(ap, unsigned long long));
+                put_unsigned(write, va_arg(ap, unsigned long long));
                 break;
             }
 
             reset = true;
             break;
         case 's':
-            kputs(va_arg(ap, const char*));
+            puts(write, va_arg(ap, const char*));
             reset = true;
             break;
         case 'c':
-            terminal_putchar(va_arg(ap, int));
+            putc(write, va_arg(ap, int));
             reset = true;
             break;
         case 'x':
-            kput_hex(va_arg(ap, unsigned));
+            put_hex(write, va_arg(ap, unsigned));
             reset = true;
             break;
         case 'p':
-            kput_ul_hex(va_arg(ap, size_t));
+            put_ul_hex(write, va_arg(ap, size_t));
             reset = true;
             break;
         }
@@ -91,12 +95,12 @@ kprintf(const char *format, ...) {
         }
     }
 
-    terminal_write(first, last - first);
+    write(first, last - first);
     va_end(ap);
 }
 
 #ifndef ARRAY_LENGTH
-#define ARRAY_LENGTH(arr) ((sizeof(arr))/(sizeof(arr[0])))
+#define ARRAY_LENGTH(arr) ((sizeof(arr)) / (sizeof(arr[0])))
 #endif
 
 /*
@@ -104,80 +108,64 @@ kprintf(const char *format, ...) {
  * and it's at most 20 characters long
  */
 static void
-kput_int(long long n) {
+put_int(write_func write, long long n) {
     char mem[21], *stack = mem + ARRAY_LENGTH(mem) - 1;
     int copy = n;
     *stack = 0;
 
     do {
-        char c = n % 10;
-
-        if (n > 0)
-            c += '0';
-        else
-            c = '0' - c;
-
-        *--stack = c;
+        *--stack = GET_DIGIT(n, 10);
     } while (n /= 10);
 
     if (copy < 0)
         *--stack = '-';
-    terminal_writestring(stack);
+    write(stack, strlen(stack));
 }
 
 static void
-kput_unsigned(unsigned long long n) {
+put_unsigned(write_func write, unsigned long long n) {
     char mem[21], *stack = mem + ARRAY_LENGTH(mem) - 1;
     *stack = 0;
 
     do {
-        *--stack = (n % 10) + '0';
+        *--stack = GET_DIGIT(n, 10);
     } while (n /= 10);
 
-    terminal_writestring(stack);
+    write(stack, strlen(stack));
 }
 
 static void
-kput_hex(unsigned n) {
+put_hex(write_func write, unsigned n) {
     char mem[] = "0x00000000";
     char *stack = mem + ARRAY_LENGTH(mem) - 1;
 
     do {
-        char c = n % 16;
-
-        if (c < 10)
-            c += '0';
-        else
-            c += 'a' - 10;
-
-        *--stack = c;
+        *--stack = GET_DIGIT(n, 16);
     } while (n /= 16);
 
-    terminal_writestring(mem);
+    write(mem, strlen(mem));
 }
 
 static void
-kput_ul_hex(size_t n) {
+put_ul_hex(write_func write, size_t n) {
     char mem[] = "0x0000000000000000";
     char *stack = mem + ARRAY_LENGTH(mem) - 1;
 
     do {
-        char c = n % 16;
-
-        if (c < 10)
-            c += '0';
-        else
-            c += 'a' - 10;
-
-        *--stack = c;
+        *--stack = GET_DIGIT(n, 16);
     } while (n /= 16);
 
-    terminal_writestring(mem);
+    write(mem, strlen(mem));
 }
 
 static void
-kputs(const char *s) {
+putc(write_func write, char c) {
+    write(&c, 1);
+}
+
+static void
+puts(write_func write, const char *s) {
     if (!s)
         s = "NULL";
-    terminal_writestring(s);
+    write(s, strlen(s));
 }

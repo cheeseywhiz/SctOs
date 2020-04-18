@@ -1,5 +1,5 @@
-#include "string.h"
 #include "terminal.h"
+#include "vga.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -9,7 +9,7 @@
 
 void
 kernel_main(void) {
-    terminal_initialize();
+    terminal_clear();
 
     /*
      * with adding one it says goodbye at the top,
@@ -18,13 +18,13 @@ kernel_main(void) {
      */
     for (int i = 0; i < VGA_HEIGHT + 1; ++i) {
         if (i % 2)
-            kprintf("Hello, kernel world!\tkernel_main = \t%p;\n",
+            tprintf("Hello, kernel world!\tkernel_main = \t%p;\n",
                     kernel_main);
         else
-            kprintf("Goodbye, kernel world!\tkprintf = \t%p;\n",
-                    kprintf);
+            tprintf("Goodbye, kernel world!\tkprintf = \t%p;\n",
+                    generic_printf);
     }
 
-    kprintf("%lu\n", (size_t)kernel_main);
-    kprintf("%ld %ld\n", INT32_MAX, INT32_MIN);
+    tprintf("%lu\n", (size_t)kernel_main);
+    tprintf("%ld %ld\n", INT32_MAX, INT32_MIN);
 }
