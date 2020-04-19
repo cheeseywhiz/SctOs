@@ -1,5 +1,4 @@
-cross
 .clangd
-*.o
-opsys
+cross
+build
 compile_commands.json
