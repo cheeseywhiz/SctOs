@@ -2,8 +2,8 @@
 #include "vga.h"
 size_t terminal_row = 0;
 size_t terminal_column = 0;
-uint8_t terminal_color = VGA_ENTRY_COLOR(VGA_COLOR_LIGHT_GRAY,
-                                         VGA_COLOR_BLACK);
+uint8_t terminal_color = VGA_ENTRY_COLOR(VGA_COLOR_WHITE,
+                                         VGA_COLOR_BLUE);
 #define CLEAR_CHAR(x, y) VGA_WRITE(' ', terminal_color, x, y)
 
 static void putc(char);

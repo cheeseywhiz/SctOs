@@ -25,7 +25,7 @@ enum vga_color {
 
 #define VGA_WIDTH 80
 #define VGA_HEIGHT 25
-static volatile uint16_t *const vga_port = (volatile uint16_t*)0xB8000;
+static volatile uint16_t *const vga_port = (volatile uint16_t*)0xC03FF000;
 #define VGA_ENTRY_COLOR(fg, bg) ((bg) << 4 | (fg))
 #define VGA_ENTRY(c, entry_color) (((uint16_t)(entry_color) << 8) | (uint16_t)(c))
 #define VGA_AT(x, y) (&vga_port[(y) * VGA_WIDTH + (x)])

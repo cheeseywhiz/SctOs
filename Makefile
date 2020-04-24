@@ -8,6 +8,7 @@ BUILD := build
 OBJECTS := $(addprefix $(BUILD)/, $(OBJECTS))
 DEPS := $(OBJECTS:%.o=%.d)
 BUILD_TREE := $(BUILD) $(addprefix $(BUILD)/, $(SOURCE_TREE))
+LINKER_SCRIPT := linker.ld
 
 CC := $(TARGET)-gcc
 AS := $(CC)
@@ -21,8 +22,8 @@ all: $(BUILD_TREE) $(BUILD)/opsys
 $(BUILD_TREE):
 	mkdir -p $@
 
-$(BUILD)/opsys: linker.ld $(OBJECTS)
-	$(CC) $(CFLAGS) -nostdlib -T linker.ld -o $@ $(OBJECTS) -lgcc
+$(BUILD)/opsys: $(LINKER_SCRIPT) $(OBJECTS)
+	$(CC) $(CFLAGS) -nostdlib -T $(LINKER_SCRIPT) -o $@ $(OBJECTS) -lgcc
 
 $(BUILD)/%.o: %.s
 	$(AS) -c -o $@ $<
