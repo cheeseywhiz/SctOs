@@ -1,4 +1,4 @@
-SOURCE_TREE := $(shell find boot src -type d)
+SOURCE_TREE := $(shell find src -type d)
 ASM_SOURCES := $(foreach dir, $(SOURCE_TREE), $(wildcard $(dir)/*.s))
 ASM_OBJ := $(ASM_SOURCES:%.s=%.o)
 C_SOURCES := $(foreach dir, $(SOURCE_TREE), $(wildcard $(dir)/*.c))
