@@ -6,14 +6,15 @@ C_OBJ := $(C_SOURCES:%.c=%.o)
 OBJECTS := $(ASM_OBJ) $(C_OBJ)
 BUILD := build
 OBJECTS := $(addprefix $(BUILD)/, $(OBJECTS))
-DEPS := $(OBJECTS:%.o=%.d)
-BUILD_TREE := $(BUILD) $(addprefix $(BUILD)/, $(SOURCE_TREE))
-LINKER_SCRIPT := linker.ld
 
 LIB_TREE := $(shell find lib -type d)
 LIB_SOURCES := $(foreach dir, $(LIB_TREE), $(wildcard $(dir)/*.c))
 LIB_OBJECTS := $(LIB_SOURCES:%.c=%.o)
 LIB_OBJECTS := $(addprefix $(BUILD)/, $(LIB_OBJECTS))
+
+DEPS := $(OBJECTS:%.o=%.d)
+BUILD_TREE := $(BUILD) $(addprefix $(BUILD)/, $(SOURCE_TREE))
+LINKER_SCRIPT := linker.ld
 
 CC := $(TARGET)-gcc
 AS := $(CC)
@@ -25,16 +26,13 @@ LDLIBS += -lgcc
 .SUFFIXES:
 
 .PHONY: all
-all: kernel libc
+all: kernel
 
 $(BUILD_TREE):
 	@mkdir -p $@
 
 $(BUILD)/opsys: $(LINKER_SCRIPT) $(OBJECTS)
 	$(CC) $(CFLAGS) -nostdlib -T $(LINKER_SCRIPT) -o $@ $(OBJECTS) $(LDLIBS)
-
-$(BUILD)/libc.a: $(LIB_OBJECTS)
-	$(AR) rcs $@ $^
 
 $(BUILD)/%.o: %.s
 	$(AS) -c -o $@ $<
@@ -44,16 +42,14 @@ $(BUILD)/%.o: %.c
 
 -include $(DEPS)
 
-.PHONY: build_tree kernel libc clean run debug-deps
+.PHONY: build_tree kernel clean run debug-deps
 
 build_tree: $(BUILD_TREE)
 
 kernel: build_tree $(BUILD)/opsys
 
-libc: build_tree $(BUILD)/libc.a
-
 clean:
 	-rm -rf $(BUILD)
 
-run: all
+qemu: all
 	-qemu-system-i386 -kernel $(BUILD)/opsys

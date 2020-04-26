@@ -71,10 +71,10 @@ _start:
     movl %ecx, %cr0
 
     /* jump to higher half */
-    lea 4f, %ecx
+    lea 1f, %ecx
     jmp *%ecx
 
-4:
+1:
     movl $0, boot_page_directory + 0
     /* force TLB flush to commit changes */
     movl %cr3, %ecx
@@ -83,7 +83,7 @@ _start:
     mov $stack_top, %esp
     call kernel_main
     cli
-5:  hlt
-    jmp 5b
+1:  hlt
+    jmp 1b
 
 .size _start, . - _start
