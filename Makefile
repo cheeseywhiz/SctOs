@@ -1,27 +1,23 @@
-SOURCE_TREE := $(shell find lib src -type d)
-ASM_SOURCES := $(foreach dir, $(SOURCE_TREE), $(wildcard $(dir)/*.s))
-ASM_OBJ := $(ASM_SOURCES:%.s=%.o)
-C_SOURCES := $(foreach dir, $(SOURCE_TREE), $(wildcard $(dir)/*.c))
-C_OBJ := $(C_SOURCES:%.c=%.o)
-OBJECTS := $(ASM_OBJ) $(C_OBJ)
 BUILD := build
-OBJECTS := $(addprefix $(BUILD)/, $(OBJECTS))
-
-LIB_TREE := $(shell find lib -type d)
-LIB_SOURCES := $(foreach dir, $(LIB_TREE), $(wildcard $(dir)/*.c))
-LIB_OBJECTS := $(LIB_SOURCES:%.c=%.o)
-LIB_OBJECTS := $(addprefix $(BUILD)/, $(LIB_OBJECTS))
-
-DEPS := $(OBJECTS:%.o=%.d)
-BUILD_TREE := $(BUILD) $(addprefix $(BUILD)/, $(SOURCE_TREE))
 LINKER_SCRIPT := linker.ld
 
-CC := $(TARGET)-gcc
-AS := $(CC)
+TARGET_CC := ./cross/bin/i686-elf-gcc
+TARGET_AS := ./cross/bin/i686-elf-gcc
 CFLAGS += -std=gnu99 -ffreestanding -O2
 CFLAGS += -Werror -Wall -Wextra -pedantic
 CPPFLAGS += -Iinclude
 LDLIBS += -lgcc
+
+KERNEL_DIRS := lib src
+KERNEL_TREE := $(shell find $(KERNEL_DIRS) -type d)
+KERNEL_ASM_SOURCES := $(shell find $(KERNEL_DIRS) -name "*.s")
+KERNEL_C_SOURCES := $(shell find $(KERNEL_DIRS) -name "*.c")
+KERNEL_OBJECTS := $(KERNEL_ASM_SOURCES:%.s=%.o) $(KERNEL_C_SOURCES:%.c=%.o)
+KERNEL_OBJECTS := $(addprefix $(BUILD)/target/, $(KERNEL_OBJECTS))
+KERNEL_TREE := $(addprefix $(BUILD)/target/, $(KERNEL_TREE))
+
+DEPS := $(KERNEL_OBJECTS:%.o=%.d)
+BUILD_TREE := $(BUILD) $(BUILD)/target $(KERNEL_TREE)
 
 .SUFFIXES:
 
@@ -31,25 +27,25 @@ all: kernel
 $(BUILD_TREE):
 	@mkdir -p $@
 
-$(BUILD)/opsys: $(LINKER_SCRIPT) $(OBJECTS)
-	$(CC) $(CFLAGS) -nostdlib -T $(LINKER_SCRIPT) -o $@ $(OBJECTS) $(LDLIBS)
+$(BUILD)/target/opsys: $(LINKER_SCRIPT) $(KERNEL_OBJECTS)
+	$(TARGET_CC) $(CFLAGS) -nostdlib -T $(LINKER_SCRIPT) -o $@ $(KERNEL_OBJECTS) $(LDLIBS)
 
-$(BUILD)/%.o: %.s
-	$(AS) -c -o $@ $<
+$(BUILD)/target/%.o: %.s
+	$(TARGET_AS) -c -o $@ $<
 
-$(BUILD)/%.o: %.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) -MMD -MP -c -o $@ $<
+$(BUILD)/target/%.o: %.c
+	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -MMD -MP -c -o $@ $<
 
 -include $(DEPS)
 
 .PHONY: build_tree kernel clean run debug-deps
 
-build_tree: $(BUILD_TREE)
+build-tree: $(BUILD_TREE)
 
-kernel: build_tree $(BUILD)/opsys
+kernel: build-tree $(BUILD)/target/opsys
 
 clean:
 	-rm -rf $(BUILD)
 
 qemu: all
-	-qemu-system-i386 -kernel $(BUILD)/opsys
+	-qemu-system-i386 -kernel $(BUILD)/target/opsys
