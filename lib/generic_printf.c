@@ -1,5 +1,6 @@
 #include "generic_printf.h"
 #include "string.h"
+#include "util.h"
 #include <stdarg.h>
 #include <stdbool.h>
 
@@ -98,10 +99,6 @@ generic_printf(write_func write, const char *format, ...) {
     write(first, last - first);
     va_end(ap);
 }
-
-#ifndef ARRAY_LENGTH
-#define ARRAY_LENGTH(arr) ((sizeof(arr)) / (sizeof(arr[0])))
-#endif
 
 /*
  * long long is the longest c signed int
