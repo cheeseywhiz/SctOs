@@ -5,7 +5,7 @@ TARGET_CC := ./cross/bin/i686-elf-gcc
 TARGET_AS := ./cross/bin/i686-elf-as
 CFLAGS += -std=gnu99 -O2
 CFLAGS += -Werror -Wall -Wextra -pedantic
-CPPFLAGS += -Iinclude
+CPPFLAGS += -iquote include
 KERNEL_CFLAGS += -ffreestanding
 TEST_CFLAGS += -Og -ggdb
 OBJECT_CFLAGS += -MMD -MP

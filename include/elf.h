@@ -121,10 +121,10 @@ enum elf_type {
     ET_EXEC,
     ET_DYN,
     ET_CORE,
-    ET_LOOS = 0xfe00,
-    ET_HIOS = 0xfeff,
-    ET_LOPROC = 0xff00,
-    ET_HIPROC = 0xffff,
+#define ET_LOOS 0xfe00
+#define ET_HIOS 0xfeff
+#define ET_LOPROC 0xff00
+#define ET_HIPROC 0xffff
 };
 
 static const char *const elf_type_str[] = {
@@ -133,10 +133,6 @@ static const char *const elf_type_str[] = {
     _ENUM_STR(ET_EXEC),
     _ENUM_STR(ET_DYN),
     _ENUM_STR(ET_CORE),
-    _ENUM_STR(ET_LOOS),
-    _ENUM_STR(ET_HIOS),
-    _ENUM_STR(ET_LOPROC),
-    _ENUM_STR(ET_HIPROC),
 };
 
 enum elf_machine {
@@ -176,16 +172,14 @@ static const char *const elf_version_str[] = {
 };
 
 /* elf64 table 7 */
-enum elf_special_section_index {
-    SHN_UNDEF,
-    SHN_BEGIN,
-    SHN_LOPROC = 0xff00,
-    SHN_HIPROC = 0xff1f,
-    SHN_LOOS = 0xff20,
-    SHN_HIOS = 0xff3f,
-    SHN_ABS = 0xfff1,
-    SHN_COMMON = 0xfff2,
-};
+#define SHN_UNDEF 0
+#define SHN_BEGIN 1
+#define SHN_LOPROC 0xff00
+#define SHN_HIPROC 0xff1f
+#define SHN_LOOS 0xff20
+#define SHN_HIOS 0xff3f
+#define SHN_ABS 0xfff1
+#define SHN_COMMON 0xfff2
 
 /* elf64 figure 3 */
 typedef struct {
@@ -220,11 +214,11 @@ enum elf_section_type {
     SHT_PREINIT_ARRAY,
     SHT_GROUP,
 /* number of defined types */
-#define SHT_NUM SHT_GROUP
-    SHT_LOOS = 0x60000000,
-    SHT_HIOS = 0x6fffffff,
-    SHT_LOPROC = 0x70000000,
-    SHT_HIPROC = 0x7fffffff,
+    SHT_NUM,
+#define SHT_LOOS 0x60000000
+#define SHT_HIOS 0x6fffffff
+#define SHT_LOPROC 0x70000000
+#define SHT_HIPROC 0x7fffffff
 };
 
 static const char *const elf_section_type_str[] = {
@@ -268,9 +262,80 @@ static const char *const elf_section_flags_str[] = {
     "STRINGS", "MERGE", "EXECINSTR", "ALLOC", "WRITE",
 };
 
+/* elf64 section 6*/
+typedef struct {
+    Elf64_Word    st_name;  /* symbol name offset in associated string table */
+    unsigned char st_info;  /* type & binding, see tables 14 & 15 */
+    unsigned char st_other; /* reserved */
+    Elf64_Half    st_shndx; /* section table index */
+    Elf64_Addr    st_value; /* virtual address for exececutables and shared
+                             * object files */
+    Elf64_Xword   st_size;  /* size of object, if known */
+} Elf64_Sym;
+
+#define ELF_SYMBOL_BINDING(sym) ((sym).st_info >> 4)
+#define ELF_SYMBOL_TYPE(sym) ((sym).st_info & 0xf)
+
+/* elf64 table 14 */
+enum elf_symbol_binding {
+    STB_LOCAL,
+    STB_GLOBAL,
+    STB_WEAK,
+    STB_NUM,
+#define STB_LOOS 10
+#define STB_HIOS 12
+#define STB_LOPROC 13
+#define STB_HIPROC 15
+};
+
+static const char *const elf_symbol_binding_str[] = {
+    _ENUM_STR(STB_LOCAL),
+    _ENUM_STR(STB_GLOBAL),
+    _ENUM_STR(STB_WEAK),
+};
+
+/* elf64 table 15 */
+enum elf_symbol_type {
+    STT_NOTYPE,
+    STT_OBJECT,
+    STT_FUNC,
+    STT_SECTION,
+    STT_FILE,
+/* glibc elf/elf.h */
+    STT_COMMON,
+    STT_TLS,
+    STT_NUM,
+#define STT_LOOS 10
+#define STT_HIOS 12
+#define STT_LOPROC 13
+#define STT_HIPROC 15
+};
+
+static const char *const elf_symbol_type_str[] = {
+    _ENUM_STR(STT_NOTYPE),
+    _ENUM_STR(STT_OBJECT),
+    _ENUM_STR(STT_FUNC),
+    _ENUM_STR(STT_SECTION),
+    _ENUM_STR(STT_FILE),
+    _ENUM_STR(STT_COMMON),
+    _ENUM_STR(STT_TLS),
+};
+
+struct elf_symbol_table;
+
 struct elf_file {
-    const char *fname;
-    Elf64_Ehdr  header;
-    Elf64_Shdr *sections;
-    const char *section_names;
+    Elf64_Ehdr               header;
+    const char              *fname;
+    int                      fd;
+    Elf64_Shdr              *sections;
+    const char              *section_names;
+    Elf64_Half               n_symbol_tables;
+    struct elf_symbol_table *symbol_tables;
+};
+
+struct elf_symbol_table {
+    const Elf64_Shdr *section;
+    Elf64_Xword       n_symbols;
+    const Elf64_Sym  *symbols;
+    const char       *names;
 };
