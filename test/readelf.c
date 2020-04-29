@@ -372,7 +372,7 @@ static void print_symbol_table(const struct elf_file*, Elf64_Half);
 static void
 print_symbol_tables(const struct elf_file *elf_file) {
     printf("\nsymbol tables:\n");
-    printf("%20s %-32s %-11s %-11s %-16s %18s %20s\n",
+    printf("%20s  %-32s %-11s %-11s %-16s %18s %20s\n",
         "index", "name", "binding", "type", "section", "value", "size");
     for (Elf64_Half i = 0; i < elf_file->n_symbol_tables; ++i)
         print_symbol_table(elf_file, i);

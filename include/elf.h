@@ -50,7 +50,7 @@ typedef struct {
      (hdr).e_ident[EI_MAG2] == 'L' && \
      (hdr).e_ident[EI_MAG3] == 'F')
 
-#define _ENUM_STR(value) [value] = #value
+#define _ENUM_STR(prefix, suffix) [prefix ## suffix] = (#suffix)
 
 /* elf64 table 3 */
 enum elf_class {
@@ -60,9 +60,9 @@ enum elf_class {
 };
 
 static const char *const elf_class_str[] = {
-    _ENUM_STR(ELFCLASSNONE),
-    _ENUM_STR(ELFCLASS32),
-    _ENUM_STR(ELFCLASS64),
+    _ENUM_STR(ELFCLASS, NONE),
+    _ENUM_STR(ELFCLASS, 32),
+    _ENUM_STR(ELFCLASS, 64),
 };
 
 /* elf64 table 4 */
@@ -73,9 +73,9 @@ enum elf_endianness {
 };
 
 static const char *const elf_endianness_str[] = {
-    _ENUM_STR(EE_NONE),
-    _ENUM_STR(EE_LITTLE),
-    _ENUM_STR(EE_BIG),
+    _ENUM_STR(EE_, NONE),
+    _ENUM_STR(EE_, LITTLE),
+    _ENUM_STR(EE_, BIG),
 };
 
 /* elf64 table 5 + glibc elf/elf.h */
@@ -98,20 +98,20 @@ enum elf_osabi {
 };
 
 static const char *const elf_osabi_str[] = {
-    _ENUM_STR(ELFOSABI_SYSV),
-    _ENUM_STR(ELFOSABI_HPUX),
-    _ENUM_STR(ELFOSABI_NETBSD),
-    _ENUM_STR(ELFOSABI_GNU),
-    _ENUM_STR(ELFOSABI_SOLARIS),
-    _ENUM_STR(ELFOSABI_AIX),
-    _ENUM_STR(ELFOSABI_IRIX),
-    _ENUM_STR(ELFOSABI_FREEBSD),
-    _ENUM_STR(ELFOSABI_TRU64),
-    _ENUM_STR(ELFOSABI_MODESTO),
-    _ENUM_STR(ELFOSABI_OPENBSD),
-    _ENUM_STR(ELFOSABI_ARM_AEABI),
-    _ENUM_STR(ELFOSABI_ARM),
-    _ENUM_STR(ELFOSABI_STANDALONE),
+    _ENUM_STR(ELFOSABI_, SYSV),
+    _ENUM_STR(ELFOSABI_, HPUX),
+    _ENUM_STR(ELFOSABI_, NETBSD),
+    _ENUM_STR(ELFOSABI_, GNU),
+    _ENUM_STR(ELFOSABI_, SOLARIS),
+    _ENUM_STR(ELFOSABI_, AIX),
+    _ENUM_STR(ELFOSABI_, IRIX),
+    _ENUM_STR(ELFOSABI_, FREEBSD),
+    _ENUM_STR(ELFOSABI_, TRU64),
+    _ENUM_STR(ELFOSABI_, MODESTO),
+    _ENUM_STR(ELFOSABI_, OPENBSD),
+    _ENUM_STR(ELFOSABI_, ARM_AEABI),
+    _ENUM_STR(ELFOSABI_, ARM),
+    _ENUM_STR(ELFOSABI_, STANDALONE),
 };
 
 /* elf64 table 6 */
@@ -128,11 +128,11 @@ enum elf_type {
 };
 
 static const char *const elf_type_str[] = {
-    _ENUM_STR(ET_NONE),
-    _ENUM_STR(ET_REL),
-    _ENUM_STR(ET_EXEC),
-    _ENUM_STR(ET_DYN),
-    _ENUM_STR(ET_CORE),
+    _ENUM_STR(ET_, NONE),
+    _ENUM_STR(ET_, REL),
+    _ENUM_STR(ET_, EXEC),
+    _ENUM_STR(ET_, DYN),
+    _ENUM_STR(ET_, CORE),
 };
 
 enum elf_machine {
@@ -149,16 +149,16 @@ enum elf_machine {
 };
 
 static const char *const elf_machine_str[] = {
-    _ENUM_STR(EM_NONE),
-    _ENUM_STR(EM_M32),
-    _ENUM_STR(EM_SPARC),
-    _ENUM_STR(EM_386),
-    _ENUM_STR(EM_68K),
-    _ENUM_STR(EM_88K),
-    _ENUM_STR(EM_860),
-    _ENUM_STR(EM_MIPS),
-    _ENUM_STR(EM_MIPS_RS4_BE),
-    _ENUM_STR(EM_X86_64),
+    _ENUM_STR(EM_, NONE),
+    _ENUM_STR(EM_, M32),
+    _ENUM_STR(EM_, SPARC),
+    _ENUM_STR(EM_, 386),
+    _ENUM_STR(EM_, 68K),
+    _ENUM_STR(EM_, 88K),
+    _ENUM_STR(EM_, 860),
+    _ENUM_STR(EM_, MIPS),
+    _ENUM_STR(EM_, MIPS_RS4_BE),
+    _ENUM_STR(EM_, X86_64),
 };
 
 enum elf_version {
@@ -167,8 +167,8 @@ enum elf_version {
 };
 
 static const char *const elf_version_str[] = {
-    _ENUM_STR(EV_NONE),
-    _ENUM_STR(EV_CURRENT),
+    _ENUM_STR(EV_, NONE),
+    _ENUM_STR(EV_, CURRENT),
 };
 
 /* elf64 table 7 */
@@ -222,22 +222,22 @@ enum elf_section_type {
 };
 
 static const char *const elf_section_type_str[] = {
-    _ENUM_STR(SHT_NULL),
-    _ENUM_STR(SHT_PROGBITS),
-    _ENUM_STR(SHT_SYMTAB),
-    _ENUM_STR(SHT_STRTAB),
-    _ENUM_STR(SHT_RELA),
-    _ENUM_STR(SHT_HASH),
-    _ENUM_STR(SHT_DYNAMIC),
-    _ENUM_STR(SHT_NOTE),
-    _ENUM_STR(SHT_NOBITS),
-    _ENUM_STR(SHT_REL),
-    _ENUM_STR(SHT_RESERVED),
-    _ENUM_STR(SHT_DYNSYM),
-    _ENUM_STR(SHT_INIT_ARRAY),
-    _ENUM_STR(SHT_FINI_ARRAY),
-    _ENUM_STR(SHT_PREINIT_ARRAY),
-    _ENUM_STR(SHT_GROUP),
+    _ENUM_STR(SHT_, NULL),
+    _ENUM_STR(SHT_, PROGBITS),
+    _ENUM_STR(SHT_, SYMTAB),
+    _ENUM_STR(SHT_, STRTAB),
+    _ENUM_STR(SHT_, RELA),
+    _ENUM_STR(SHT_, HASH),
+    _ENUM_STR(SHT_, DYNAMIC),
+    _ENUM_STR(SHT_, NOTE),
+    _ENUM_STR(SHT_, NOBITS),
+    _ENUM_STR(SHT_, REL),
+    _ENUM_STR(SHT_, RESERVED),
+    _ENUM_STR(SHT_, DYNSYM),
+    _ENUM_STR(SHT_, INIT_ARRAY),
+    _ENUM_STR(SHT_, FINI_ARRAY),
+    _ENUM_STR(SHT_, PREINIT_ARRAY),
+    _ENUM_STR(SHT_, GROUP),
 };
 
 /* elf64 table 9 + glibc elf/elf.h */
@@ -262,7 +262,7 @@ static const char *const elf_section_flags_str[] = {
     "STRINGS", "MERGE", "EXECINSTR", "ALLOC", "WRITE",
 };
 
-/* elf64 section 6*/
+/* elf64 figure 4 */
 typedef struct {
     Elf64_Word    st_name;  /* symbol name offset in associated string table */
     unsigned char st_info;  /* type & binding, see tables 14 & 15 */
@@ -289,9 +289,9 @@ enum elf_symbol_binding {
 };
 
 static const char *const elf_symbol_binding_str[] = {
-    _ENUM_STR(STB_LOCAL),
-    _ENUM_STR(STB_GLOBAL),
-    _ENUM_STR(STB_WEAK),
+    _ENUM_STR(STB_, LOCAL),
+    _ENUM_STR(STB_, GLOBAL),
+    _ENUM_STR(STB_, WEAK),
 };
 
 /* elf64 table 15 */
@@ -312,16 +312,18 @@ enum elf_symbol_type {
 };
 
 static const char *const elf_symbol_type_str[] = {
-    _ENUM_STR(STT_NOTYPE),
-    _ENUM_STR(STT_OBJECT),
-    _ENUM_STR(STT_FUNC),
-    _ENUM_STR(STT_SECTION),
-    _ENUM_STR(STT_FILE),
-    _ENUM_STR(STT_COMMON),
-    _ENUM_STR(STT_TLS),
+    _ENUM_STR(STT_, NOTYPE),
+    _ENUM_STR(STT_, OBJECT),
+    _ENUM_STR(STT_, FUNC),
+    _ENUM_STR(STT_, SECTION),
+    _ENUM_STR(STT_, FILE),
+    _ENUM_STR(STT_, COMMON),
+    _ENUM_STR(STT_, TLS),
 };
 
 struct elf_symbol_table;
+struct elf_rel_table;
+struct elf_rela_table;
 
 struct elf_file {
     Elf64_Ehdr               header;
