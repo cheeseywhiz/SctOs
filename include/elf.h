@@ -321,6 +321,105 @@ static const char *const elf_symbol_type_str[] = {
     _ENUM_STR(STT_, TLS),
 };
 
+/* elf64 figure 5 */
+typedef struct {
+    Elf64_Addr  r_offset; /* virtual address of reference */
+    Elf64_Xword r_info;   /* index and type */
+} Elf64_Rel;
+
+typedef struct {
+    Elf64_Addr   r_offset; /* virtual address of reference */
+    Elf64_Xword  r_info;   /* symbol index and type */
+    Elf64_Sxword r_addend; /* constant part of expression */
+} Elf64_Rela;
+
+/* r_info */
+#define ELF64_R_SYM(rel) ((rel).r_info >> 32)
+#define ELF64_R_TYPE(rel) ((rel).r_info & 0xffffffffL)
+
+/* SysV ABI table 4.9 */
+enum elf_relocation_type {
+    R_X86_64_NONE,
+    R_X86_64_64,
+    R_X86_64_PC32,
+    R_X86_64_GOT32,
+    R_X86_64_PLT32,
+    R_X86_64_COPY,
+    R_X86_64_GLOB_DAT,
+    R_X86_64_JUMP_SLOT,
+    R_X86_64_RELATIVE,
+    R_X86_64_GOTPCREL,
+    R_X86_64_32,
+    R_X86_64_32S,
+    R_X86_64_16,
+    R_X86_64_PC16,
+    R_X86_64_8,
+    R_X86_64_PC8,
+    R_X86_64_DTPMOD64,
+    R_X86_64_DTPOFF64,
+    R_X86_64_TPOFF64,
+    R_X86_64_TLSGD,
+    R_X86_64_TLSLD,
+    R_X86_64_DTPOFF32,
+    R_X86_64_GOTTPOFF,
+    R_X86_64_TPOFF32,
+    R_X86_64_PC64,
+    R_X86_64_GOTOFF64,
+    R_X86_64_GOTPC32,
+    R_X86_64_SIZE32 = 32,
+    R_X86_64_SIZE64,
+    R_X86_64_GOTPC32_TLSDESC,
+    R_X86_64_TLSDESC_CALL,
+    R_X86_64_TLSDESC,
+    R_X86_64_IRELATIVE,
+    R_X86_64_RELATIVE64,
+    R_X86_64_DEPRECATED_39,
+    R_X86_64_DEPRECATED_40,
+    R_X86_64_GOTPCRELX,
+    R_X86_64_REX_GOTPCRELX,
+};
+
+static const char *const elf_relocation_type_str[] = {
+    _ENUM_STR(R_X86_64_, NONE),
+    _ENUM_STR(R_X86_64_, 64),
+    _ENUM_STR(R_X86_64_, PC32),
+    _ENUM_STR(R_X86_64_, GOT32),
+    _ENUM_STR(R_X86_64_, PLT32),
+    _ENUM_STR(R_X86_64_, COPY),
+    _ENUM_STR(R_X86_64_, GLOB_DAT),
+    _ENUM_STR(R_X86_64_, JUMP_SLOT),
+    _ENUM_STR(R_X86_64_, RELATIVE),
+    _ENUM_STR(R_X86_64_, GOTPCREL),
+    _ENUM_STR(R_X86_64_, 32),
+    _ENUM_STR(R_X86_64_, 32S),
+    _ENUM_STR(R_X86_64_, 16),
+    _ENUM_STR(R_X86_64_, PC16),
+    _ENUM_STR(R_X86_64_, 8),
+    _ENUM_STR(R_X86_64_, PC8),
+    _ENUM_STR(R_X86_64_, DTPMOD64),
+    _ENUM_STR(R_X86_64_, DTPOFF64),
+    _ENUM_STR(R_X86_64_, TPOFF64),
+    _ENUM_STR(R_X86_64_, TLSGD),
+    _ENUM_STR(R_X86_64_, TLSLD),
+    _ENUM_STR(R_X86_64_, DTPOFF32),
+    _ENUM_STR(R_X86_64_, GOTTPOFF),
+    _ENUM_STR(R_X86_64_, TPOFF32),
+    _ENUM_STR(R_X86_64_, PC64),
+    _ENUM_STR(R_X86_64_, GOTOFF64),
+    _ENUM_STR(R_X86_64_, GOTPC32),
+    _ENUM_STR(R_X86_64_, SIZE32 ),
+    _ENUM_STR(R_X86_64_, SIZE64),
+    _ENUM_STR(R_X86_64_, GOTPC32_TLSDESC),
+    _ENUM_STR(R_X86_64_, TLSDESC_CALL),
+    _ENUM_STR(R_X86_64_, TLSDESC),
+    _ENUM_STR(R_X86_64_, IRELATIVE),
+    _ENUM_STR(R_X86_64_, RELATIVE64),
+    _ENUM_STR(R_X86_64_, DEPRECATED_39),
+    _ENUM_STR(R_X86_64_, DEPRECATED_40),
+    _ENUM_STR(R_X86_64_, GOTPCRELX),
+    _ENUM_STR(R_X86_64_, REX_GOTPCRELX),
+};
+
 struct elf_symbol_table;
 struct elf_rel_table;
 struct elf_rela_table;
@@ -333,6 +432,8 @@ struct elf_file {
     const char              *section_names;
     Elf64_Half               n_symbol_tables;
     struct elf_symbol_table *symbol_tables;
+    Elf64_Half               n_rel_tables;
+    struct elf_rel_table    *rel_tables;
 };
 
 struct elf_symbol_table {
@@ -340,4 +441,10 @@ struct elf_symbol_table {
     Elf64_Xword       n_symbols;
     const Elf64_Sym  *symbols;
     const char       *names;
+};
+
+struct elf_rel_table {
+    const Elf64_Shdr *section;
+    Elf64_Xword       n_relocations;
+    const Elf64_Rela *relocations;
 };
