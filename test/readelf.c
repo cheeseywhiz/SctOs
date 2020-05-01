@@ -16,7 +16,8 @@ static void free_elf_file(struct elf_file*);
 static void print_elf_file(const struct elf_file*);
 
 int
-main(int argc, char *argv[]) {
+main(int argc, char *argv[])
+{
     printf("sizeof(Elf64_Ehdr): %lu\n", sizeof(Elf64_Ehdr));
     printf("sizeof(Elf64_Phdr): %lu\n", sizeof(Elf64_Phdr));
     printf("sizeof(Elf64_Shdr): %lu\n", sizeof(Elf64_Shdr));
@@ -54,16 +55,16 @@ static bool read_interpreter(struct elf_file*);
 static bool read_symbol_tables(struct elf_file*);
 static bool read_relocations(struct elf_file*);
 static const void* read_section_data(const struct elf_file*, Elf64_Half);
+static void* elf_alloc(Elf64_Xword);
+static void* elf_read(const struct elf_file*, void*, Elf64_Off, Elf64_Xword);
 
 static struct elf_file*
 readelf(const char *fname)
 {
     struct elf_file *elf_file = NULL;
 
-    if (!(elf_file = malloc(sizeof(*elf_file)))) {
-        fprintf(stderr, "malloc(elf_file): %d %s\n", errno, strerror(errno));
+    if (!(elf_file = elf_alloc(sizeof(*elf_file))))
         goto error;
-    }
 
     elf_file->program_headers = NULL;
     elf_file->fname = fname;
@@ -80,11 +81,8 @@ readelf(const char *fname)
         goto error;
     }
 
-    if ((size_t)read(elf_file->fd, &elf_file->header, sizeof(elf_file->header))
-            != sizeof(elf_file->header)) {
-        fprintf(stderr, "read(elf_header): %d %s\n", errno, strerror(errno));
+    if (!elf_read(elf_file, &elf_file->header, 0, sizeof(elf_file->header)))
         goto error;
-    }
 
     if (!ELF_VERIFY_MAGIC(elf_file->header)) {
         fprintf(stderr, "file is not ELF\n");
@@ -144,66 +142,17 @@ read_program_headers(struct elf_file *elf_file)
 {
     if (!elf_file->header.e_phoff)
         return false;
-
-    size_t program_headers_size =
-        sizeof(Elf64_Phdr) * elf_file->header.e_phnum;
-
-    if (!(elf_file->program_headers = malloc(program_headers_size))) {
-        fprintf(stderr, "malloc(%lu): %d %s\n",
-                program_headers_size, errno, strerror(errno));
-        goto error;
-    }
-
-    if (lseek(elf_file->fd, elf_file->header.e_phoff, SEEK_SET) < 0) {
-        fprintf(stderr, "lseek(%lu): %d %s\n",
-                elf_file->header.e_phoff, errno, strerror(errno));
-        goto error;
-    }
-
-    if ((size_t)read(elf_file->fd, (void*)elf_file->program_headers,
-                     program_headers_size) != program_headers_size) {
-        fprintf(stderr, "read(%lu): %d %s\n",
-                program_headers_size, errno, strerror(errno));
-        goto error;
-    }
-
-    return false;
-
-error:
-    free((void*)elf_file->program_headers);
-    return true;
+    return !(elf_file->program_headers = elf_read(
+            elf_file, NULL, elf_file->header.e_phoff,
+            sizeof(*elf_file->program_headers) * elf_file->header.e_phnum));
 }
 
 static bool
 read_sections(struct elf_file *elf_file)
 {
-    size_t sections_size =
-        sizeof(*elf_file->sections) * elf_file->header.e_shnum;
-
-    if (!(elf_file->sections = malloc(sections_size))) {
-        fprintf(stderr, "malloc(%lu): %d %s\n",
-                sections_size, errno, strerror(errno));
-        goto error;
-    }
-
-    if (lseek(elf_file->fd, elf_file->header.e_shoff, SEEK_SET) < 0) {
-        fprintf(stderr, "lseek(shoff): %d %s\n", errno, strerror(errno));
-        goto error;
-    }
-
-    if ((size_t)read(elf_file->fd, elf_file->sections, sections_size)
-            != sections_size) {
-        fprintf(stderr, "read(section_headers): %d %s\n",
-                errno, strerror(errno));
-        goto error;
-    }
-
-    return false;
-
-error:
-    free(elf_file->sections);
-    elf_file->sections = NULL;
-    return true;
+    return !(elf_file->sections = elf_read(
+        elf_file, NULL, elf_file->header.e_shoff,
+        sizeof(*elf_file->sections) * elf_file->header.e_shnum));
 }
 
 static bool
@@ -221,7 +170,7 @@ read_interpreter(struct elf_file *elf_file)
 }
 
 static bool
-read_symbol_tables(struct elf_file *elf_file __attribute__((unused)))
+read_symbol_tables(struct elf_file *elf_file)
 {
     for (Elf64_Half i = SHN_BEGIN; i < elf_file->header.e_shnum; ++i) {
         if (elf_file->sections[i].sh_type == SHT_SYMTAB)
@@ -231,11 +180,8 @@ read_symbol_tables(struct elf_file *elf_file __attribute__((unused)))
     size_t symbol_tables_size =
         sizeof(*elf_file->symbol_tables) * elf_file->n_symbol_tables;
 
-    if (!(elf_file->symbol_tables = malloc(symbol_tables_size))) {
-        fprintf(stderr, "malloc(%lu): %d %s",
-                symbol_tables_size, errno, strerror(errno));
+    if (!(elf_file->symbol_tables = elf_alloc(symbol_tables_size)))
         goto error;
-    }
 
     for (Elf64_Half i = 0; i < elf_file->n_symbol_tables; ++i) {
         struct elf_symbol_table *symbol_table = &elf_file->symbol_tables[i];
@@ -255,15 +201,11 @@ read_symbol_tables(struct elf_file *elf_file __attribute__((unused)))
         symbol_table->n_symbols =
             table_section->sh_size / sizeof(*symbol_table->symbols);
 
-        if (!(symbol_table->symbols = read_section_data(elf_file, i))) {
+        if (!(symbol_table->symbols = read_section_data(elf_file, i)))
             goto error;
-        }
-
-        if (!(symbol_table->names =
-                read_section_data(elf_file, table_section->sh_link))) {
+        if (!(symbol_table->names = read_section_data(
+                elf_file, (Elf64_Half)table_section->sh_link)))
             goto error;
-        }
-
         ++symbol_table;
     }
 
@@ -272,8 +214,7 @@ read_symbol_tables(struct elf_file *elf_file __attribute__((unused)))
 error:
     if (elf_file->symbol_tables) {
         for (Elf64_Half i = 0; i < elf_file->n_symbol_tables; ++i) {
-            const struct elf_symbol_table *symbol_table =
-                &elf_file->symbol_tables[i];
+            symbol_table = &elf_file->symbol_tables[i];
             free((void*)symbol_table->symbols);
             free((void*)symbol_table->names);
         }
@@ -290,7 +231,8 @@ static const void*
 convert_rel_to_rela(const struct elf_file*, Elf64_Half);
 
 static bool
-read_relocations(struct elf_file *elf_file) {
+read_relocations(struct elf_file *elf_file)
+{
     for (Elf64_Half i = SHN_BEGIN; i < elf_file->header.e_shnum; ++i) {
         Elf64_Word type = elf_file->sections[i].sh_type;
         if (type == SHT_REL || type == SHT_RELA)
@@ -300,11 +242,8 @@ read_relocations(struct elf_file *elf_file) {
     size_t rel_tables_size =
         sizeof(*elf_file->rel_tables) * elf_file->n_rel_tables;
 
-    if (!(elf_file->rel_tables = malloc(rel_tables_size))) {
-        fprintf(stderr, "malloc(%lu): %d %s",
-                rel_tables_size, errno, strerror(errno));
+    if (!(elf_file->rel_tables = elf_alloc(rel_tables_size)))
         goto error;
-    }
 
     for (Elf64_Half i = 0; i < elf_file->n_rel_tables; ++i) {
         struct elf_rel_table *rel_table = &elf_file->rel_tables[i];
@@ -349,7 +288,8 @@ error:
 }
 
 static const void*
-convert_rel_to_rela(const struct elf_file *elf_file, Elf64_Half i) {
+convert_rel_to_rela(const struct elf_file *elf_file, Elf64_Half i)
+{
     bool bad = false;
     Elf64_Rela *rela_table = NULL;
     const Elf64_Rel *rel_table;
@@ -363,16 +303,14 @@ convert_rel_to_rela(const struct elf_file *elf_file, Elf64_Half i) {
     Elf64_Xword n_elems = rel_section->sh_size / sizeof(*rel_section);
     size_t rela_size = sizeof(*rela_table) * n_elems;
 
-    if (!(rela_table = malloc(rela_size))) {
-        fprintf(stderr, "malloc(%lu): %d %s\n",
-                rela_size, errno, strerror(errno));
+    if (!(rela_table = elf_alloc(rela_size))) {
         bad = true;
         goto end;
     }
 
-    for (Elf64_Xword i = 0; i < n_elems; ++i) {
-        const Elf64_Rel *rel = &rel_table[i];
-        Elf64_Rela *rela = &rela_table[i];
+    for (Elf64_Xword j = 0; j < n_elems; ++j) {
+        const Elf64_Rel *rel = &rel_table[j];
+        Elf64_Rela *rela = &rela_table[j];
         rela->r_offset = rel->r_offset;
         rela->r_info = rel->r_info;
         rela->r_addend = 0;
@@ -383,7 +321,6 @@ end:
     if (!bad)
         return rela_table;
     free(rela_table);
-    rela_table = NULL;
     return NULL;
 }
 
@@ -391,30 +328,50 @@ static const void*
 read_section_data(const struct elf_file *elf_file, Elf64_Half i)
 {
     const Elf64_Shdr *section = &elf_file->sections[i];
-    void *data = NULL;
+    return elf_read(elf_file, NULL, section->sh_offset, section->sh_size);
+}
 
-    if (!(data = malloc(section->sh_size))) {
-        fprintf(stderr, "malloc(%lu): %d %s\n",
-                section->sh_size, errno, strerror(errno));
+static void*
+elf_alloc(Elf64_Xword size)
+{
+    void *buf;
+    if (!(buf = malloc(size)))
+        fprintf(stderr, "malloc(%lu): %d %s\n", size, errno, strerror(errno));
+    return buf;
+}
+
+static void*
+elf_read(const struct elf_file* elf_file, void *buf, Elf64_Off offset,
+         Elf64_Xword size)
+{
+    bool new = false;
+
+    if (!buf) {
+        new = true;
+        if (!(buf = elf_alloc(size)))
+            goto error;
+    }
+
+    if (offset > INT64_MAX) {
+        fprintf(stderr, "offset too large: %lu\n", offset);
         goto error;
     }
 
-    if (lseek(elf_file->fd, section->sh_offset, SEEK_SET) < 0) {
-        fprintf(stderr, "lseek(%lu): %d %s\n",
-                section->sh_offset, errno, strerror(errno));
+    if (lseek(elf_file->fd, (off_t)offset, SEEK_SET) < 0) {
+        fprintf(stderr, "lseek(%lu): %d %s\n", offset, errno, strerror(errno));
         goto error;
     }
 
-    if ((size_t)read(elf_file->fd, (void*)data, section->sh_size)
-            != section->sh_size) {
-        fprintf(stderr, "read(sectio_names): %d %s\n", errno, strerror(errno));
+    if ((Elf64_Xword)read(elf_file->fd, buf, size) != size) {
+        fprintf(stderr, "read(%lu): %d %s\n", size, errno, strerror(errno));
         goto error;
     }
 
-    return data;
+    return buf;
 
 error:
-    free(data);
+    if (new)
+        free(buf);
     return NULL;
 }
 
@@ -657,7 +614,7 @@ print_relocations(const struct elf_file *elf_file)
     for (Elf64_Half i = 0; i < elf_file->n_rel_tables; ++i) {
         const struct elf_rel_table *rel_table = &elf_file->rel_tables[i];
         const struct elf_symbol_table *symbol_table =
-            get_symbol_table(elf_file, rel_table->section->sh_link);
+            get_symbol_table(elf_file, (Elf64_Half)rel_table->section->sh_link);
         printf(
             "relocation table: %s -> %s\n",
             &elf_file->section_names[rel_table->section->sh_name],

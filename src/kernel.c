@@ -7,6 +7,8 @@
 # error "You are not using the cross compiler"
 #endif
 
+void kernel_main(void);
+
 void
 kernel_main(void) {
     terminal_clear();

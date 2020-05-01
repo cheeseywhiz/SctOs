@@ -27,7 +27,7 @@ generic_printf(write_func write, const char *format, ...) {
             if (format_mode)
                 first = last;
             else
-                write(first, last - first);
+                write(first, (size_t)last - (size_t)first);
 
             format_mode = !format_mode;
             continue;
@@ -77,7 +77,7 @@ generic_printf(write_func write, const char *format, ...) {
             reset = true;
             break;
         case 'c':
-            putc(write, va_arg(ap, int));
+            putc(write, (char)va_arg(ap, int));
             reset = true;
             break;
         case 'x':
@@ -96,7 +96,7 @@ generic_printf(write_func write, const char *format, ...) {
         }
     }
 
-    write(first, last - first);
+    write(first, (size_t)last - (size_t)first);
     va_end(ap);
 }
 
@@ -107,7 +107,7 @@ generic_printf(write_func write, const char *format, ...) {
 static void
 put_int(write_func write, long long n) {
     char mem[21], *stack = mem + ARRAY_LENGTH(mem) - 1;
-    int copy = n;
+    long long copy = n;
     *stack = 0;
 
     do {

@@ -11,12 +11,12 @@ static void inc_column(size_t);
 static void inc_row(size_t);
 static void scroll(size_t);
 
-static const int tab_size = 8;
+static const size_t tab_size = 8;
 
 void
 terminal_clear(void) {
-    for (size_t y = 0; y < VGA_HEIGHT; ++y) {
-        for (size_t x = 0; x < VGA_WIDTH; ++x)
+    for (uint16_t y = 0; y < VGA_HEIGHT; ++y) {
+        for (uint16_t x = 0; x < VGA_WIDTH; ++x)
             CLEAR_CHAR(x, y);
     }
 }

@@ -11,11 +11,14 @@ BUILD_HOST ?= build/host
 TARGET_CC := ./cross/bin/i686-elf-gcc
 TARGET_AS := ./cross/bin/i686-elf-as
 CFLAGS += -std=gnu99 -O2
-CFLAGS += -Werror -Wall -Wextra -pedantic
+CFLAGS += -Werror -Wall -Wextra -pedantic -Wshadow -Wpointer-arith -Wcast-align \
+		  -Wwrite-strings -Wmissing-prototypes -Wmissing-declarations \
+		  -Wredundant-decls -Wnested-externs -Winline -Wno-long-long \
+		  -Wconversion -Wstrict-prototypes -fdiagnostics-color=always
 OBJECT_CFLAGS += -MMD -MP
 CPPFLAGS += -iquote include
 KERNEL_CFLAGS += -ffreestanding
-TEST_CFLAGS += -Og -ggdb
+TEST_CFLAGS += -O0 -ggdb
 TEST_OBJECT_CFLAGS += -fpie
 KERNEL_LDLIBS += -lgcc
 LINKER_SCRIPT := linker.ld
@@ -55,24 +58,24 @@ $(BUILD_TREE):
 	@mkdir -p $@
 
 $(KERNEL): $(LINKER_SCRIPT) $(KERNEL_OBJECTS)
-	$(TARGET_CC) $(CFLAGS) $(KERNEL_CFLAGS) -nostdlib -T $(LINKER_SCRIPT) -o $@ $(KERNEL_OBJECTS) $(KERNEL_LDLIBS)
+	@$(TARGET_CC) $(CFLAGS) $(KERNEL_CFLAGS) -nostdlib -T $(LINKER_SCRIPT) -o $@ $(KERNEL_OBJECTS) $(KERNEL_LDLIBS)
 
 $(BUILD_TARGET)/%.o: %.s
-	$(TARGET_AS) -o $@ $<
+	@$(TARGET_AS) -o $@ $<
 
 $(BUILD_TARGET)/%.o: %.c
-	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+	@$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
 $(BUILD_HOST)/readelf: $(BUILD_HOST)/test/readelf.o $(BUILD_HOST)/lib/string.o
-	$(CC) $(CFLAGS) $(TEST_CFLAGS) -static-pie -o $@ $^
+	@$(CC) $(CFLAGS) $(TEST_CFLAGS) -static-pie -o $@ $^
 
 $(BUILD_HOST)/%.o: %.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+	@$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
 $(BUILD_HOST)/small-exec: test/small-exec.S
-	$(CPP) $< | $(AS) -o $@.o -
-	$(LD) -nostdlib -o $@ $@.o
-	-$(RM) $@.o
+	@$(CPP) $< | $(AS) -o $@.o -
+	@$(LD) -nostdlib -o $@ $@.o
+	@-$(RM) $@.o
 
 -include $(DEPS)
 

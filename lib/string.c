@@ -1,5 +1,6 @@
 /* copied from xv6 */
 #include "x86.h"
+#include "string.h"
 #include <stddef.h>
 
 void*
