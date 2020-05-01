@@ -481,6 +481,7 @@ struct elf_file {
     int                      fd;
     Elf64_Shdr              *sections;
     const char              *section_names;
+    const char              *interpreter;
     Elf64_Half               n_symbol_tables;
     struct elf_symbol_table *symbol_tables;
     Elf64_Half               n_rel_tables;

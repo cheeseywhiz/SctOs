@@ -1,6 +1,7 @@
 /* TODO: port this program to my operating system */
 #include "elf.h"
 #include "util.h"
+#include "string.h"
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -49,12 +50,14 @@ main(int argc, char *argv[]) {
 /* returns if an error occurred */
 static bool read_program_headers(struct elf_file*);
 static bool read_sections(struct elf_file*);
+static bool read_interpreter(struct elf_file*);
 static bool read_symbol_tables(struct elf_file*);
 static bool read_relocations(struct elf_file*);
 static const void* read_section_data(const struct elf_file*, Elf64_Half);
 
 static struct elf_file*
-readelf(const char *fname) {
+readelf(const char *fname)
+{
     struct elf_file *elf_file = NULL;
 
     if (!(elf_file = malloc(sizeof(*elf_file)))) {
@@ -66,6 +69,7 @@ readelf(const char *fname) {
     elf_file->fname = fname;
     elf_file->sections = NULL;
     elf_file->section_names = NULL;
+    elf_file->interpreter = NULL;
     elf_file->n_symbol_tables = 0;
     elf_file->symbol_tables = NULL;
     elf_file->n_rel_tables = 0;
@@ -94,6 +98,8 @@ readelf(const char *fname) {
     if (!(elf_file->section_names =
             read_section_data(elf_file, elf_file->header.e_shstrndx)))
         goto error;
+    if (read_interpreter(elf_file))
+        goto error;
     if (read_symbol_tables(elf_file))
         goto error;
     if (read_relocations(elf_file))
@@ -106,7 +112,8 @@ error:
 }
 
 static void
-free_elf_file(struct elf_file *elf_file) {
+free_elf_file(struct elf_file *elf_file)
+{
     if (!elf_file)
         return;
 
@@ -117,6 +124,7 @@ free_elf_file(struct elf_file *elf_file) {
 
     free((void*)elf_file->program_headers);
     free((void*)elf_file->section_names);
+    free((void*)elf_file->interpreter);
 
     for (Elf64_Half i = 0; i < elf_file->n_symbol_tables; ++i) {
         const struct elf_symbol_table *symbol_table =
@@ -199,7 +207,22 @@ error:
 }
 
 static bool
-read_symbol_tables(struct elf_file *elf_file __attribute__((unused))) {
+read_interpreter(struct elf_file *elf_file)
+{
+    for (Elf64_Half i = 1; i < elf_file->header.e_shnum; ++i) {
+        const Elf64_Shdr *section = &elf_file->sections[i];
+        const char *name = &elf_file->section_names[section->sh_name];
+        if (strcmp(name, ".interp"))
+            continue;
+        return !(elf_file->interpreter = read_section_data(elf_file, i));
+    }
+
+    return false;
+}
+
+static bool
+read_symbol_tables(struct elf_file *elf_file __attribute__((unused)))
+{
     for (Elf64_Half i = SHN_BEGIN; i < elf_file->header.e_shnum; ++i) {
         if (elf_file->sections[i].sh_type == SHT_SYMTAB)
             ++elf_file->n_symbol_tables;
@@ -365,7 +388,8 @@ end:
 }
 
 static const void*
-read_section_data(const struct elf_file *elf_file, Elf64_Half i) {
+read_section_data(const struct elf_file *elf_file, Elf64_Half i)
+{
     const Elf64_Shdr *section = &elf_file->sections[i];
     void *data = NULL;
 
@@ -504,6 +528,10 @@ print_section_headers(const struct elf_file *elf_file)
         const Elf64_Shdr *header = &elf_file->sections[i];
         print_section_header(elf_file, header);
     }
+
+    if (!elf_file->interpreter)
+        return;
+    printf("interpreter: %s\n", elf_file->interpreter);
 }
 
 static void print_section_type(Elf64_Word);

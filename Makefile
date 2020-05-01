@@ -12,10 +12,11 @@ TARGET_CC := ./cross/bin/i686-elf-gcc
 TARGET_AS := ./cross/bin/i686-elf-as
 CFLAGS += -std=gnu99 -O2
 CFLAGS += -Werror -Wall -Wextra -pedantic
+OBJECT_CFLAGS += -MMD -MP
 CPPFLAGS += -iquote include
 KERNEL_CFLAGS += -ffreestanding
-TEST_CFLAGS += -Og -ggdb -fPIC
-OBJECT_CFLAGS += -MMD -MP
+TEST_CFLAGS += -Og -ggdb
+TEST_OBJECT_CFLAGS += -fpie
 KERNEL_LDLIBS += -lgcc
 LINKER_SCRIPT := linker.ld
 
@@ -28,8 +29,8 @@ KERNEL_OBJECTS := $(addprefix $(BUILD_TARGET)/, $(KERNEL_OBJECTS))
 KERNEL_TREE := $(addprefix $(BUILD_TARGET)/, $(KERNEL_TREE))
 KERNEL := $(BUILD_TARGET)/opsys
 
-TEST_TREE := $(shell find test -type d)
-TEST_SOURCES := $(shell find test -name "*.c")
+TEST_TREE := $(shell find test lib -type d)
+TEST_SOURCES := $(shell find lib test -name "*.c")
 TEST_OBJECTS := $(TEST_SOURCES:%.c=%.o)
 TEST_OBJECTS := $(addprefix $(BUILD_HOST)/, $(TEST_OBJECTS))
 TEST_TREE := $(addprefix $(BUILD_HOST)/, $(TEST_TREE))
@@ -40,6 +41,10 @@ DEPS := $(OBJECTS:%.o=%.d)
 BUILD_TREE := $(BUILD_TARGET) $(BUILD_HOST) $(KERNEL_TREE) $(TEST_TREE)
 
 $(OBJECTS): CFLAGS += $(OBJECT_CFLAGS)
+$(BUILD_TARGET)/%.o: CFLAGS += $(KERNEL_CFLAGS)
+$(TEST_OBJECTS): CFLAGS += $(TEST_OBJECT_CFLAGS)
+$(BUILD_HOST)/lib/%.o: CFLAGS += -nostdlib -ffreestanding
+$(BUILD_HOST)/%.o: CFLAGS += $(TEST_CFLAGS)
 
 .SUFFIXES:
 
@@ -56,13 +61,13 @@ $(BUILD_TARGET)/%.o: %.s
 	$(TARGET_AS) -o $@ $<
 
 $(BUILD_TARGET)/%.o: %.c
-	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) $(KERNEL_CFLAGS) -c -o $@ $<
+	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
-$(BUILD_HOST)/readelf: $(BUILD_HOST)/test/readelf.o
-	$(CC) $(CFLAGS) $(TEST_CFLAGS) -static -o $@ $(BUILD_HOST)/test/readelf.o
+$(BUILD_HOST)/readelf: $(BUILD_HOST)/test/readelf.o $(BUILD_HOST)/lib/string.o
+	$(CC) $(CFLAGS) $(TEST_CFLAGS) -static-pie -o $@ $^
 
 $(BUILD_HOST)/%.o: %.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(TEST_CFLAGS) -c -o $@ $<
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
 $(BUILD_HOST)/small-exec: test/small-exec.S
 	$(CPP) $< | $(AS) -o $@.o -
