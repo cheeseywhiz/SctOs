@@ -17,11 +17,12 @@ static void print_elf_file(const struct elf_file*);
 int
 main(int argc, char *argv[]) {
     printf("sizeof(Elf64_Ehdr): %lu\n", sizeof(Elf64_Ehdr));
+    printf("sizeof(Elf64_Phdr): %lu\n", sizeof(Elf64_Phdr));
     printf("sizeof(Elf64_Shdr): %lu\n", sizeof(Elf64_Shdr));
     printf("sizeof(Elf64_Sym):  %lu\n", sizeof(Elf64_Sym));
     printf("sizeof(Elf64_Rel):  %lu\n", sizeof(Elf64_Rel));
     printf("sizeof(Elf64_Rela): %lu\n", sizeof(Elf64_Rela));
-    printf("flags: ");
+    printf("section flags: ");
     for (size_t i = 0; i < ARRAY_LENGTH(elf_section_flags_str); ++i)
         printf("%s ", elf_section_flags_str[i]);
     puts("");
@@ -46,6 +47,7 @@ main(int argc, char *argv[]) {
 }
 
 /* returns if an error occurred */
+static bool read_program_headers(struct elf_file*);
 static bool read_sections(struct elf_file*);
 static bool read_symbol_tables(struct elf_file*);
 static bool read_relocations(struct elf_file*);
@@ -60,6 +62,7 @@ readelf(const char *fname) {
         goto error;
     }
 
+    elf_file->program_headers = NULL;
     elf_file->fname = fname;
     elf_file->sections = NULL;
     elf_file->section_names = NULL;
@@ -84,6 +87,8 @@ readelf(const char *fname) {
         goto error;
     }
 
+    if (read_program_headers(elf_file))
+        goto error;
     if (read_sections(elf_file))
         goto error;
     if (!(elf_file->section_names =
@@ -110,6 +115,7 @@ free_elf_file(struct elf_file *elf_file) {
         elf_file->fd = -1;
     }
 
+    free((void*)elf_file->program_headers);
     free((void*)elf_file->section_names);
 
     for (Elf64_Half i = 0; i < elf_file->n_symbol_tables; ++i) {
@@ -126,7 +132,43 @@ free_elf_file(struct elf_file *elf_file) {
 }
 
 static bool
-read_sections(struct elf_file *elf_file) {
+read_program_headers(struct elf_file *elf_file)
+{
+    if (!elf_file->header.e_phoff)
+        return false;
+
+    size_t program_headers_size =
+        sizeof(Elf64_Phdr) * elf_file->header.e_phnum;
+
+    if (!(elf_file->program_headers = malloc(program_headers_size))) {
+        fprintf(stderr, "malloc(%lu): %d %s\n",
+                program_headers_size, errno, strerror(errno));
+        goto error;
+    }
+
+    if (lseek(elf_file->fd, elf_file->header.e_phoff, SEEK_SET) < 0) {
+        fprintf(stderr, "lseek(%lu): %d %s\n",
+                elf_file->header.e_phoff, errno, strerror(errno));
+        goto error;
+    }
+
+    if ((size_t)read(elf_file->fd, (void*)elf_file->program_headers,
+                     program_headers_size) != program_headers_size) {
+        fprintf(stderr, "read(%lu): %d %s\n",
+                program_headers_size, errno, strerror(errno));
+        goto error;
+    }
+
+    return false;
+
+error:
+    free((void*)elf_file->program_headers);
+    return true;
+}
+
+static bool
+read_sections(struct elf_file *elf_file)
+{
     size_t sections_size =
         sizeof(*elf_file->sections) * elf_file->header.e_shnum;
 
@@ -353,6 +395,7 @@ error:
 }
 
 static void print_elf_header(const struct elf_file*);
+static void print_program_headers(const struct elf_file*);
 static void print_section_headers(const struct elf_file*);
 static void print_symbol_tables(const struct elf_file*);
 static void print_relocations(const struct elf_file*);
@@ -361,13 +404,15 @@ static void
 print_elf_file(const struct elf_file *elf_file)
 {
     print_elf_header(elf_file);
+    print_program_headers(elf_file);
     print_section_headers(elf_file);
     print_symbol_tables(elf_file);
     print_relocations(elf_file);
 }
 
 static void
-print_elf_header(const struct elf_file *elf_file) {
+print_elf_header(const struct elf_file *elf_file)
+{
     const Elf64_Ehdr *header = &elf_file->header;
     puts("elf header:");
     printf(
@@ -394,10 +439,60 @@ print_elf_header(const struct elf_file *elf_file) {
     printf("\tshstrndx:\t%u\n", header->e_shstrndx);
 }
 
-static void print_section_header(const struct elf_file*, Elf64_Half);
+static void print_program_header(const struct elf_file*, const Elf64_Phdr*);
 
 static void
-print_section_headers(const struct elf_file *elf_file) {
+print_program_headers(const struct elf_file *elf_file)
+{
+    printf("\nprogram headers:\n");
+    printf("%5s %-7s %5s %18s %18s %18s %18s %9s %s\n",
+        "index", "type", "flags", "file offset", "size in file",
+        "virtual address", "size in memory", "align", "sections");
+
+    for (Elf64_Half i = 0; i < elf_file->header.e_phnum; ++i) {
+        printf("%5u ", i);
+        const Elf64_Phdr *header = &elf_file->program_headers[i];
+        print_program_header(elf_file, header);
+    }
+}
+
+static void
+print_program_header(const struct elf_file *elf_file, const Elf64_Phdr *header)
+{
+    if (header->p_type <= PT_MAX)
+        printf("%-7s ", elf_segment_type_str[header->p_type]);
+    else if (PT_LOOS <= header->p_type && header->p_type <= PT_HIOS)
+        printf("%-7x ", header->p_type - PT_LOOS);
+    else if (PT_LOPROC <= header->p_type && header->p_type <= PT_HIPROC)
+        printf("%-7x ", header->p_type - PT_LOPROC);
+    else
+        printf("%-7u ", header->p_type);
+
+    printf("%c%c%c   %#18lx %#18lx %#18lx %#18lx %#9lx ",
+        header->p_flags & PF_R ? 'R' : ' ',
+        header->p_flags & PF_W ? 'W' : ' ',
+        header->p_flags & PF_X ? 'X' : ' ',
+        header->p_offset, header->p_filesz,
+        header->p_vaddr, header->p_memsz,
+        header->p_align);
+
+    for (Elf64_Half i = 1; i < elf_file->header.e_shnum; ++i) {
+        const Elf64_Shdr *section = &elf_file->sections[i];
+
+        if (section->sh_flags & SHF_ALLOC
+                && header->p_vaddr <= section->sh_addr
+                && section->sh_addr < header->p_vaddr + header->p_memsz)
+            printf("%s ", &elf_file->section_names[section->sh_name]);
+    }
+
+    puts("");
+}
+
+static void print_section_header(const struct elf_file*, const Elf64_Shdr*);
+
+static void
+print_section_headers(const struct elf_file *elf_file)
+{
     printf("\nsection headers:\n");
     printf("%-5s  %-16s %-18s %10s %10s %10s %18s %18s %9s %20s %10s %20s\n",
         "index", "name", "type", "link", "info", "flags", "virtual address",
@@ -406,7 +501,8 @@ print_section_headers(const struct elf_file *elf_file) {
 
     for (Elf64_Half i = SHN_BEGIN; i < elf_file->header.e_shnum; ++i) {
         printf("%5u%c ", i, i == elf_file->header.e_shstrndx ? '*' : ' ');
-        print_section_header(elf_file, i);
+        const Elf64_Shdr *header = &elf_file->sections[i];
+        print_section_header(elf_file, header);
     }
 }
 
@@ -416,8 +512,8 @@ static void print_section_type(Elf64_Word);
     (header->sh_flags & (flag) ? (#flag)[4] : ' ')
 
 static void
-print_section_header(const struct elf_file *elf_file, Elf64_Half i) {
-    const Elf64_Shdr *header = &elf_file->sections[i];
+print_section_header(const struct elf_file *elf_file, const Elf64_Shdr *header)
+{
     char flags[] = {
         FLAG(SHF_COMPRESSED),
         FLAG(SHF_TLS),
@@ -443,7 +539,8 @@ print_section_header(const struct elf_file *elf_file, Elf64_Half i) {
 }
 
 static void
-print_section_type(Elf64_Word type) {
+print_section_type(Elf64_Word type)
+{
     if (type <= SHT_NUM)
         printf("%-18s ", elf_section_type_str[type]);
     else if (SHT_LOOS <= type && type <= SHT_HIOS)

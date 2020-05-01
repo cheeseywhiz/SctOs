@@ -2,3 +2,8 @@
 cross
 build
 compile_commands.json
+*.o
+*.d
+opsys
+readelf
+small-exec

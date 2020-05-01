@@ -420,12 +420,63 @@ static const char *const elf_relocation_type_str[] = {
     _ENUM_STR(R_X86_64_, REX_GOTPCRELX),
 };
 
+/* elf64 figure 6 */
+typedef struct {
+    Elf64_Word  p_type;   /* elf_segment_type */
+    Elf64_Word  p_flags;  /* elf_segment_attributes */
+    Elf64_Off   p_offset; /* offset in file */
+    Elf64_Addr  p_vaddr;  /* execution virtual address */
+    Elf64_Addr  p_paddr;  /* reserved */
+    Elf64_Xword p_filesz; /* size of segment in file */
+    Elf64_Xword p_memsz;  /* size of segment in memory */
+    Elf64_Xword p_align;  /* alignment of segment */
+} Elf64_Phdr;
+
+/* elf64 table 16 */
+enum elf_segment_type {
+    PT_NULL,    /* unused entry */
+    PT_LOAD,    /* loadable segment */
+    PT_DYNAMIC, /* dynamic linking tables */
+    PT_INTERP,  /* Requested program interpreter */
+    PT_NOTE,    /* Note sections */
+    PT_SHLIB,   /* Reserved */
+    PT_PHDR,    /* Program header table */
+/* glibc elf/elf.h */
+    PT_TLS,     /* thread local storage */
+#define PT_MAX PT_TLS
+#define PT_LOOS 0x60000000
+#define PT_HIOS 0x6fffffff
+#define PT_LOPROC 0x70000000
+#define PT_HIPROC 0x7fffffff
+};
+
+static const char *const elf_segment_type_str[] = {
+    _ENUM_STR(PT_, NULL),
+    _ENUM_STR(PT_, LOAD),
+    _ENUM_STR(PT_, DYNAMIC),
+    _ENUM_STR(PT_, INTERP),
+    _ENUM_STR(PT_, NOTE),
+    _ENUM_STR(PT_, SHLIB),
+    _ENUM_STR(PT_, PHDR),
+    _ENUM_STR(PT_, TLS),
+};
+
+/* elf64 table 17 */
+enum elf_segment_attributes {
+    PF_X = 1 << 0,
+    PF_W = 1 << 1,
+    PF_R = 1 << 2,
+#define PF_MASKOS 0xff0000
+#define PF_MASK_PROC 0xff000000
+};
+
 struct elf_symbol_table;
 struct elf_rel_table;
 struct elf_rela_table;
 
 struct elf_file {
     Elf64_Ehdr               header;
+    const Elf64_Phdr        *program_headers;
     const char              *fname;
     int                      fd;
     Elf64_Shdr              *sections;

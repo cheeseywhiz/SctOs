@@ -1,5 +1,12 @@
-BUILD := build
-LINKER_SCRIPT := linker.ld
+# in tree test build:
+BUILD_TARGET ?= build
+BUILD_HOST ?= .
+# in tree kernel build:
+BUILD_TARGET ?= .
+BUILD_HOST ?= build
+# out of tree build:
+BUILD_TARGET ?= build/target
+BUILD_HOST ?= build/host
 
 TARGET_CC := ./cross/bin/i686-elf-gcc
 TARGET_AS := ./cross/bin/i686-elf-as
@@ -7,74 +14,76 @@ CFLAGS += -std=gnu99 -O2
 CFLAGS += -Werror -Wall -Wextra -pedantic
 CPPFLAGS += -iquote include
 KERNEL_CFLAGS += -ffreestanding
-TEST_CFLAGS += -Og -ggdb
+TEST_CFLAGS += -Og -ggdb -fPIC
 OBJECT_CFLAGS += -MMD -MP
-LDLIBS += -lgcc
+KERNEL_LDLIBS += -lgcc
+LINKER_SCRIPT := linker.ld
 
 KERNEL_DIRS := lib src
 KERNEL_TREE := $(shell find $(KERNEL_DIRS) -type d)
 KERNEL_ASM_SOURCES := $(shell find $(KERNEL_DIRS) -name "*.s")
 KERNEL_C_SOURCES := $(shell find $(KERNEL_DIRS) -name "*.c")
 KERNEL_OBJECTS := $(KERNEL_ASM_SOURCES:%.s=%.o) $(KERNEL_C_SOURCES:%.c=%.o)
-KERNEL_OBJECTS := $(addprefix $(BUILD)/target/, $(KERNEL_OBJECTS))
-KERNEL_TREE := $(addprefix $(BUILD)/target/, $(KERNEL_TREE))
-KERNEL := $(BUILD)/target/opsys
+KERNEL_OBJECTS := $(addprefix $(BUILD_TARGET)/, $(KERNEL_OBJECTS))
+KERNEL_TREE := $(addprefix $(BUILD_TARGET)/, $(KERNEL_TREE))
+KERNEL := $(BUILD_TARGET)/opsys
 
 TEST_TREE := $(shell find test -type d)
 TEST_SOURCES := $(shell find test -name "*.c")
 TEST_OBJECTS := $(TEST_SOURCES:%.c=%.o)
-TEST_OBJECTS := $(addprefix $(BUILD)/host/, $(TEST_OBJECTS))
-TEST_TREE := $(addprefix $(BUILD)/host/, $(TEST_TREE))
-TEST_EXECS := $(addprefix $(BUILD)/host/test/, readelf small-exec)
+TEST_OBJECTS := $(addprefix $(BUILD_HOST)/, $(TEST_OBJECTS))
+TEST_TREE := $(addprefix $(BUILD_HOST)/, $(TEST_TREE))
+TEST_EXECS := $(addprefix $(BUILD_HOST)/, readelf small-exec)
 
 OBJECTS := $(KERNEL_OBJECTS) $(TEST_OBJECTS)
-DEPS := $(KERNEL_OBJECTS) $(TEST_OBJECTS)
-DEPS := $(DEPS:%.o=%.d)
-BUILD_TREE := $(BUILD) $(BUILD)/target $(KERNEL_TREE) $(BUILD)/host $(TEST_TREE)
+DEPS := $(OBJECTS:%.o=%.d)
+BUILD_TREE := $(BUILD_TARGET) $(BUILD_HOST) $(KERNEL_TREE) $(TEST_TREE)
 
-$(KERNEL_OBJECTS) $(KERNEL): CFLAGS += $(KERNEL_CFLAGS)
-$(TEST_OBJECTS) $(TEST_EXECS): CFLAGS += $(TEST_CFLAGS)
 $(OBJECTS): CFLAGS += $(OBJECT_CFLAGS)
 
 .SUFFIXES:
 
-.PHONY: all
-all: kernel
+.PHONY: kernel
+kernel: build-tree $(KERNEL)
 
 $(BUILD_TREE):
 	@mkdir -p $@
 
 $(KERNEL): $(LINKER_SCRIPT) $(KERNEL_OBJECTS)
-	$(TARGET_CC) $(CFLAGS) -nostdlib -T $(LINKER_SCRIPT) -o $@ $(KERNEL_OBJECTS) $(LDLIBS)
+	$(TARGET_CC) $(CFLAGS) $(KERNEL_CFLAGS) -nostdlib -T $(LINKER_SCRIPT) -o $@ $(KERNEL_OBJECTS) $(KERNEL_LDLIBS)
 
-$(BUILD)/target/%.o: %.s
+$(BUILD_TARGET)/%.o: %.s
 	$(TARGET_AS) -o $@ $<
 
-$(BUILD)/target/%.o: %.c
-	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+$(BUILD_TARGET)/%.o: %.c
+	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) $(KERNEL_CFLAGS) -c -o $@ $<
 
-$(BUILD)/host/test/readelf: $(BUILD)/host/test/readelf.o
-	$(CC) $(CFLAGS) -static -o $@ $(BUILD)/host/test/readelf.o
+$(BUILD_HOST)/readelf: $(BUILD_HOST)/test/readelf.o
+	$(CC) $(CFLAGS) $(TEST_CFLAGS) -static -o $@ $(BUILD_HOST)/test/readelf.o
 
-$(BUILD)/host/%.o: %.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+$(BUILD_HOST)/%.o: %.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(TEST_CFLAGS) -c -o $@ $<
 
-$(BUILD)/host/test/small-exec: test/small-exec.S
+$(BUILD_HOST)/small-exec: test/small-exec.S
 	$(CPP) $< | $(AS) -o $@.o -
 	$(LD) -nostdlib -o $@ $@.o
+	-$(RM) $@.o
 
 -include $(DEPS)
 
-.PHONY: build_tree kernel tests clean qemu
+.PHONY: all build-tree kernel tests clean qemu
+
+all: kernel tests
 
 build-tree: $(BUILD_TREE)
-
-kernel: build-tree $(KERNEL)
 
 tests: build-tree $(TEST_EXECS)
 
 clean:
-	-rm -rf $(BUILD)
+	-$(RM) $(OBJECTS) $(DEPS) $(KERNEL) $(TEST_EXECS)
+	-for f in $(shell echo $(BUILD_TREE) | tr ' ' '\n' | sort -r); do \
+		rmdir $$f 2>/dev/null; \
+	done
 
 qemu: all
-	-qemu-system-i386 -kernel $(BUILD)/target/opsys
+	-qemu-system-i386 -kernel $(BUILD_TARGET)/opsys
