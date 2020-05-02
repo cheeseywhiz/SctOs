@@ -476,9 +476,9 @@ struct elf_rela_table;
 
 struct elf_file {
     Elf64_Ehdr               header;
+    int                      fd;
     const Elf64_Phdr        *program_headers;
     const char              *fname;
-    int                      fd;
     Elf64_Shdr              *sections;
     const char              *section_names;
     const char              *interpreter;

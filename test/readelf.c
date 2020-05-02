@@ -55,7 +55,13 @@ static bool read_interpreter(struct elf_file*);
 static bool read_symbol_tables(struct elf_file*);
 static bool read_relocations(struct elf_file*);
 static const void* read_section_data(const struct elf_file*, Elf64_Half);
+
+static void elf_on_not_elf(const struct elf_file*);
 static void* elf_alloc(Elf64_Xword);
+#define ELF_FREE(p) elf_free((void*)p)
+static void elf_free(void*);
+static bool elf_open(struct elf_file*);
+static void elf_close(struct elf_file*);
 static void* elf_read(const struct elf_file*, void*, Elf64_Off, Elf64_Xword);
 
 static struct elf_file*
@@ -66,6 +72,7 @@ readelf(const char *fname)
     if (!(elf_file = elf_alloc(sizeof(*elf_file))))
         goto error;
 
+    elf_file->fd = -1;
     elf_file->program_headers = NULL;
     elf_file->fname = fname;
     elf_file->sections = NULL;
@@ -76,16 +83,13 @@ readelf(const char *fname)
     elf_file->n_rel_tables = 0;
     elf_file->rel_tables = NULL;
 
-    if ((elf_file->fd = open(elf_file->fname, O_RDONLY)) < 0) {
-        fprintf(stderr, "open(\"%s\");\n", elf_file->fname);
+    if (elf_open(elf_file))
         goto error;
-    }
-
     if (!elf_read(elf_file, &elf_file->header, 0, sizeof(elf_file->header)))
         goto error;
 
     if (!ELF_VERIFY_MAGIC(elf_file->header)) {
-        fprintf(stderr, "file is not ELF\n");
+        elf_on_not_elf(elf_file);
         goto error;
     }
 
@@ -115,26 +119,22 @@ free_elf_file(struct elf_file *elf_file)
     if (!elf_file)
         return;
 
-    if (elf_file->fd >= 0) {
-        close(elf_file->fd);
-        elf_file->fd = -1;
-    }
-
-    free((void*)elf_file->program_headers);
-    free((void*)elf_file->section_names);
-    free((void*)elf_file->interpreter);
+    elf_close(elf_file);
+    ELF_FREE(elf_file->program_headers);
+    ELF_FREE(elf_file->section_names);
+    ELF_FREE(elf_file->interpreter);
 
     for (Elf64_Half i = 0; i < elf_file->n_symbol_tables; ++i) {
         const struct elf_symbol_table *symbol_table =
             &elf_file->symbol_tables[i];
-        free((void*)symbol_table->symbols);
-        free((void*)symbol_table->names);
+        ELF_FREE(symbol_table->symbols);
+        ELF_FREE(symbol_table->names);
     }
 
-    free(elf_file->symbol_tables);
+    ELF_FREE(elf_file->symbol_tables);
     for (Elf64_Half i = 0; i < elf_file->n_rel_tables; ++i)
-        free((void*)elf_file->rel_tables[i].relocations);
-    free(elf_file);
+        ELF_FREE(elf_file->rel_tables[i].relocations);
+    ELF_FREE(elf_file);
 }
 
 static bool
@@ -143,8 +143,8 @@ read_program_headers(struct elf_file *elf_file)
     if (!elf_file->header.e_phoff)
         return false;
     return !(elf_file->program_headers = elf_read(
-            elf_file, NULL, elf_file->header.e_phoff,
-            sizeof(*elf_file->program_headers) * elf_file->header.e_phnum));
+        elf_file, NULL, elf_file->header.e_phoff,
+        sizeof(*elf_file->program_headers) * elf_file->header.e_phnum));
 }
 
 static bool
@@ -215,11 +215,11 @@ error:
     if (elf_file->symbol_tables) {
         for (Elf64_Half i = 0; i < elf_file->n_symbol_tables; ++i) {
             symbol_table = &elf_file->symbol_tables[i];
-            free((void*)symbol_table->symbols);
-            free((void*)symbol_table->names);
+            ELF_FREE(symbol_table->symbols);
+            ELF_FREE(symbol_table->names);
         }
 
-        free(elf_file->symbol_tables);
+        ELF_FREE(elf_file->symbol_tables);
         elf_file->symbol_tables = NULL;
     }
 
@@ -278,8 +278,8 @@ read_relocations(struct elf_file *elf_file)
 error:
     if (elf_file->rel_tables) {
         for (Elf64_Half i = 0; i < elf_file->n_rel_tables; ++i)
-            free((void*)elf_file->rel_tables[i].relocations);
-        free(elf_file->rel_tables);
+            ELF_FREE(elf_file->rel_tables[i].relocations);
+        ELF_FREE(elf_file->rel_tables);
         elf_file->rel_tables = NULL;
     }
 
@@ -317,10 +317,10 @@ convert_rel_to_rela(const struct elf_file *elf_file, Elf64_Half i)
     }
 
 end:
-    free((void*)rel_table);
+    ELF_FREE(rel_table);
     if (!bad)
         return rela_table;
-    free(rela_table);
+    ELF_FREE(rela_table);
     return NULL;
 }
 
@@ -329,6 +329,12 @@ read_section_data(const struct elf_file *elf_file, Elf64_Half i)
 {
     const Elf64_Shdr *section = &elf_file->sections[i];
     return elf_read(elf_file, NULL, section->sh_offset, section->sh_size);
+}
+
+static void
+elf_on_not_elf(const struct elf_file *elf_file)
+{
+    fprintf(stderr, "%s is not an ELF file\n", elf_file->fname);
 }
 
 static void*
@@ -340,14 +346,44 @@ elf_alloc(Elf64_Xword size)
     return buf;
 }
 
+static void
+elf_free(void *ptr)
+{
+    free(ptr);
+}
+
+static bool
+elf_open(struct elf_file *elf_file)
+{
+    int fd;
+
+    if ((fd = open(elf_file->fname, O_RDONLY)) < 0) {
+        fprintf(stderr, "open(\"%s\");\n", elf_file->fname);
+        goto error;
+    }
+
+    elf_file->fd = fd;
+    return false;
+
+error:
+    return true;
+}
+
+static void
+elf_close(struct elf_file *elf_file)
+{
+    if (elf_file->fd < 0)
+        return;
+    close(elf_file->fd);
+}
+
 static void*
 elf_read(const struct elf_file* elf_file, void *buf, Elf64_Off offset,
          Elf64_Xword size)
 {
-    bool new = false;
+    bool new;
 
-    if (!buf) {
-        new = true;
+    if ((new = !buf)) {
         if (!(buf = elf_alloc(size)))
             goto error;
     }
@@ -371,7 +407,7 @@ elf_read(const struct elf_file* elf_file, void *buf, Elf64_Off offset,
 
 error:
     if (new)
-        free(buf);
+        ELF_FREE(buf);
     return NULL;
 }
 
