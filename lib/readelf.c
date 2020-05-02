@@ -1,6 +1,7 @@
 #include "readelf.h"
 #include "elf.h"
 #include "string.h"
+#include "util.h"
 #include <stdbool.h>
 
 /* returns if an error occurred */
@@ -277,4 +278,38 @@ read_section_data(const struct elf_file *elf_file, Elf64_Half i)
 {
     const Elf64_Shdr *section = &elf_file->sections[i];
     return elf_read(elf_file, NULL, section->sh_offset, section->sh_size);
+}
+
+__weak void*
+elf_alloc(Elf64_Xword size __unused)
+{
+    return NULL;
+}
+
+__weak void
+elf_free(void *ptr __unused)
+{
+}
+
+__weak bool
+elf_open(struct elf_file *elf_file __unused)
+{
+    return true;
+}
+
+__weak void
+elf_close(struct elf_file *elf_file __unused)
+{
+}
+
+__weak void*
+elf_read(const struct elf_file *elf_file __unused, void *buf __unused,
+         Elf64_Off offset __unused, Elf64_Xword size __unused)
+{
+    return NULL;
+}
+
+__weak void
+elf_on_not_elf(const struct elf_file *elf_file __unused)
+{
 }
