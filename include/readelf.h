@@ -1,5 +1,6 @@
 #pragma once
 #include "elf.h"
+#include "util.h"
 #include <stdbool.h>
 
 struct elf_symbol_table {
@@ -16,9 +17,7 @@ struct elf_rel_table {
 };
 
 struct elf_file {
-    Elf64_Ehdr               header;
-    void                    *fd;
-    const char              *fname;
+    const Elf64_Ehdr        *header;
     const Elf64_Phdr        *program_headers;
     const Elf64_Shdr        *sections;
     const char              *section_names;
@@ -29,16 +28,15 @@ struct elf_file {
     struct elf_rel_table    *rel_tables;
 };
 
-const struct elf_file* readelf(const char *fname);
+void init_elf_file(struct elf_file*);
+/* returns if an error occurred */
+bool readelf(struct elf_file*, void *fd);
 void free_elf_file(const struct elf_file*);
 
 /* the user must define these */
-void* elf_alloc(Elf64_Xword size);
-#define ELF_FREE(p) elf_free((void*)p)
-void elf_free(void*);
-bool elf_open(struct elf_file*);
-void elf_close(struct elf_file*);
-void* elf_read(const struct elf_file*, void *buf, Elf64_Off offset,
-               Elf64_Xword size);
+
+bool elf_read(void *fd, void *buf, Elf64_Off offset, Elf64_Xword size);
+__malloc void* elf_alloc(Elf64_Xword size);
+void elf_free(const void*);
 /* the user may define this */
 void elf_on_not_elf(const struct elf_file*);
