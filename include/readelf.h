@@ -17,9 +17,9 @@ struct elf_rel_table {
 
 struct elf_file {
     Elf64_Ehdr               header;
-    int                      fd;
-    const Elf64_Phdr        *program_headers;
+    void                    *fd;
     const char              *fname;
+    const Elf64_Phdr        *program_headers;
     const Elf64_Shdr        *sections;
     const char              *section_names;
     const char              *interpreter;

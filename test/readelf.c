@@ -71,26 +71,32 @@ elf_free(void *ptr)
 bool
 elf_open(struct elf_file *elf_file)
 {
-    int fd;
+    int fd = -1;
 
     if ((fd = open(elf_file->fname, O_RDONLY)) < 0) {
         fprintf(stderr, "open(\"%s\");\n", elf_file->fname);
         goto error;
     }
 
-    elf_file->fd = fd;
+    if (!(elf_file->fd = elf_alloc(sizeof(int))))
+        goto error;
+    *(int*)elf_file->fd = fd;
     return false;
 
 error:
+    if (fd >= 0)
+        close(fd);
+    ELF_FREE(elf_file->fd);
+    elf_file->fd = NULL;
     return true;
 }
 
 void
 elf_close(struct elf_file *elf_file)
 {
-    if (elf_file->fd < 0)
+    if (!elf_file->fd)
         return;
-    close(elf_file->fd);
+    close(*(int*)elf_file->fd);
 }
 
 void*
@@ -109,12 +115,12 @@ elf_read(const struct elf_file* elf_file, void *buf, Elf64_Off offset,
         goto error;
     }
 
-    if (lseek(elf_file->fd, (off_t)offset, SEEK_SET) < 0) {
+    if (lseek(*(int*)elf_file->fd, (off_t)offset, SEEK_SET) < 0) {
         fprintf(stderr, "lseek(%lu): %d %s\n", offset, errno, strerror(errno));
         goto error;
     }
 
-    if ((Elf64_Xword)read(elf_file->fd, buf, size) != size) {
+    if ((Elf64_Xword)read(*(int*)elf_file->fd, buf, size) != size) {
         fprintf(stderr, "read(%lu): %d %s\n", size, errno, strerror(errno));
         goto error;
     }

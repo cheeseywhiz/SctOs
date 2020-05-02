@@ -19,9 +19,9 @@ readelf(const char *fname)
     if (!(elf_file = elf_alloc(sizeof(*elf_file))))
         goto error;
 
-    elf_file->fd = -1;
-    elf_file->program_headers = NULL;
+    elf_file->fd = NULL;
     elf_file->fname = fname;
+    elf_file->program_headers = NULL;
     elf_file->sections = NULL;
     elf_file->section_names = NULL;
     elf_file->interpreter = NULL;
