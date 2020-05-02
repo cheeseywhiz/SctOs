@@ -479,7 +479,7 @@ struct elf_file {
     int                      fd;
     const Elf64_Phdr        *program_headers;
     const char              *fname;
-    Elf64_Shdr              *sections;
+    const Elf64_Shdr        *sections;
     const char              *section_names;
     const char              *interpreter;
     Elf64_Half               n_symbol_tables;

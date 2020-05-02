@@ -11,8 +11,8 @@
 #include <string.h>
 
 /* returns if an error occurred */
-static struct elf_file* readelf(const char*);
-static void free_elf_file(struct elf_file*);
+static const struct elf_file* readelf(const char*);
+static void free_elf_file(const struct elf_file*);
 static void print_elf_file(const struct elf_file*);
 
 int
@@ -34,7 +34,7 @@ main(int argc, char *argv[])
         puts("");
         const char *fname = argv[i];
         printf("file:\t\t\t%s\n", fname);
-        struct elf_file *elf_file;
+        const struct elf_file *elf_file;
 
         if (!(elf_file = readelf(fname))) {
             returncode = 1;
@@ -64,7 +64,7 @@ static bool elf_open(struct elf_file*);
 static void elf_close(struct elf_file*);
 static void* elf_read(const struct elf_file*, void*, Elf64_Off, Elf64_Xword);
 
-static struct elf_file*
+static const struct elf_file*
 readelf(const char *fname)
 {
     struct elf_file *elf_file = NULL;
@@ -106,20 +106,21 @@ readelf(const char *fname)
         goto error;
     if (read_relocations(elf_file))
         goto error;
+    elf_close(elf_file);
     return elf_file;
 
 error:
+    elf_close(elf_file);
     free_elf_file(elf_file);
     return NULL;
 }
 
 static void
-free_elf_file(struct elf_file *elf_file)
+free_elf_file(const struct elf_file *elf_file)
 {
     if (!elf_file)
         return;
 
-    elf_close(elf_file);
     ELF_FREE(elf_file->program_headers);
     ELF_FREE(elf_file->section_names);
     ELF_FREE(elf_file->interpreter);
