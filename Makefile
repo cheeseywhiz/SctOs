@@ -66,7 +66,7 @@ $(BUILD_TARGET)/%.o: %.s
 $(BUILD_TARGET)/%.o: %.c
 	@$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
-$(BUILD_HOST)/readelf: $(BUILD_HOST)/test/readelf.o $(BUILD_HOST)/lib/string.o
+$(BUILD_HOST)/readelf: $(BUILD_HOST)/test/readelf.o $(BUILD_HOST)/lib/string.o $(BUILD_HOST)/lib/readelf.o
 	@$(CC) $(CFLAGS) $(TEST_CFLAGS) -static-pie -o $@ $^
 
 $(BUILD_HOST)/%.o: %.c

@@ -469,34 +469,3 @@ enum elf_segment_attributes {
 #define PF_MASKOS 0xff0000
 #define PF_MASK_PROC 0xff000000
 };
-
-struct elf_symbol_table;
-struct elf_rel_table;
-struct elf_rela_table;
-
-struct elf_file {
-    Elf64_Ehdr               header;
-    int                      fd;
-    const Elf64_Phdr        *program_headers;
-    const char              *fname;
-    const Elf64_Shdr        *sections;
-    const char              *section_names;
-    const char              *interpreter;
-    Elf64_Half               n_symbol_tables;
-    struct elf_symbol_table *symbol_tables;
-    Elf64_Half               n_rel_tables;
-    struct elf_rel_table    *rel_tables;
-};
-
-struct elf_symbol_table {
-    const Elf64_Shdr *section;
-    Elf64_Xword       n_symbols;
-    const Elf64_Sym  *symbols;
-    const char       *names;
-};
-
-struct elf_rel_table {
-    const Elf64_Shdr *section;
-    Elf64_Xword       n_relocations;
-    const Elf64_Rela *relocations;
-};
