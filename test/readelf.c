@@ -312,7 +312,7 @@ print_symbol_tables(const struct elf_file *elf_file)
         printf("%-14.14s %5s  %-32s %-11s %-11s %-16s %18s %20s\n",
             &elf_file->section_names[symbol_table->section->sh_name],
             "index", "name", "binding", "type", "section", "value", "size");
-        for (Elf64_Xword j = 0; j < symbol_table->n_symbols; ++j)
+        for (Elf64_Xword j = 1; j < symbol_table->n_symbols; ++j)
             print_symbol(elf_file, symbol_table, j);
     }
 }
@@ -402,7 +402,7 @@ get_symbol_table(const struct elf_file *elf_file, Elf64_Half ndx)
 static void
 print_relocation(
     const struct elf_rel_table *rel_table,
-    const struct elf_symbol_table *symbol_table, Elf64_Xword j, bool print_addr)
+    const struct elf_symbol_table *symbol_table, Elf64_Xword j, bool table_mode)
 {
     const Elf64_Rela *rela = &rel_table->relocations[j];
     const Elf64_Sym *symbol = symbol_table
@@ -415,8 +415,10 @@ print_relocation(
             rela->r_addend < 0 ? -(Elf64_Xword)rela->r_addend
                                : (Elf64_Xword)rela->r_addend);
 
-    printf("%20lu %-15s ", j, elf_relocation_type_str[ELF64_R_TYPE(*rela)]);
-    if (print_addr)
+    if (table_mode)
+        printf("%20lu ", j);
+    printf("%-15s ", elf_relocation_type_str[ELF64_R_TYPE(*rela)]);
+    if (table_mode)
         printf("%#18lx ", rela->r_offset);
     printf("%-32.32s %#18lx %19s\n",
         symbol ? &symbol_table->names[symbol->st_name] : "",
@@ -429,6 +431,9 @@ struct mmap_entry {
     const Elf64_Phdr *phdr;
     const char *section;
     const char *symbol;
+    const struct elf_rel_table    *rel_table;
+    const struct elf_symbol_table *rel_sym_table;
+    Elf64_Xword                    rel_index;
 };
 
 static struct mmap_entry*
@@ -445,6 +450,8 @@ mmap_get(const struct elf_file *elf_file, Elf64_Xword *n_entries)
 
     for (Elf64_Half i = 0; i < elf_file->n_symbol_tables; ++i)
         *n_entries += elf_file->symbol_tables[i].n_symbols;
+    for (Elf64_Half i = 0; i < elf_file->n_rel_tables; ++i)
+        *n_entries += elf_file->rel_tables[i].n_relocations;
     struct mmap_entry *entries;
     if (!(entries = elf_alloc(sizeof(*entries) * *n_entries)))
         return NULL;
@@ -456,6 +463,9 @@ mmap_get(const struct elf_file *elf_file, Elf64_Xword *n_entries)
         entry->phdr = NULL;
         entry->section = NULL;
         entry->symbol = NULL;
+        entry->rel_table = NULL;
+        entry->rel_sym_table = NULL;
+        entry->rel_index = 0;
     }
 
     Elf64_Xword entry_i = 0;
@@ -488,6 +498,21 @@ mmap_get(const struct elf_file *elf_file, Elf64_Xword *n_entries)
             entry->addr = symbol->st_value;
             entry->end = symbol->st_value + symbol->st_size;
             entry->symbol = &symbol_table->names[symbol->st_name];
+        }
+    }
+
+    for (Elf64_Half i = 0; i < elf_file->n_rel_tables; ++i) {
+        const struct elf_rel_table *rel_table = &elf_file->rel_tables[i];
+        const struct elf_symbol_table *rel_sym_table =
+            get_symbol_table(elf_file, (Elf64_Half)rel_table->section->sh_link);
+
+        for (Elf64_Xword j = 0; j < rel_table->n_relocations; ++j) {
+            const Elf64_Rela *rela = &rel_table->relocations[j];
+            struct mmap_entry *entry = &entries[entry_i++];
+            entry->addr = entry->end = rela->r_offset;
+            entry->rel_table = rel_table;
+            entry->rel_sym_table = rel_sym_table;
+            entry->rel_index = j;
         }
     }
 
@@ -548,7 +573,13 @@ mmap_print(const struct mmap_entry *entries, Elf64_Xword n_entries)
         }
 
         printf("%-32.32s ", entry->section ? entry->section : "");
-        printf("%s ", entry->symbol && *entry->symbol ? entry->symbol : "");
-        puts("");
+        printf("%-32.32s ",
+            entry->symbol && *entry->symbol ? entry->symbol : "");
+
+        if (entry->rel_table)
+            print_relocation(entry->rel_table, entry->rel_sym_table,
+                             entry->rel_index, false);
+        else
+            puts("");
     }
 }
