@@ -119,7 +119,8 @@ static bool
 read_symbol_tables(struct elf_file *elf_file, void *fd)
 {
     for (Elf64_Half i = SHN_BEGIN; i < elf_file->header->e_shnum; ++i) {
-        if (elf_file->sections[i].sh_type == SHT_SYMTAB)
+        const Elf64_Shdr *section = &elf_file->sections[i];
+        if (section->sh_type == SHT_SYMTAB || section->sh_type == SHT_DYNSYM)
             ++elf_file->n_symbol_tables;
     }
 
@@ -137,20 +138,22 @@ read_symbol_tables(struct elf_file *elf_file, void *fd)
         symbol_table->names = NULL;
     }
 
-    struct elf_symbol_table *symbol_table = &elf_file->symbol_tables[0];
+    Elf64_Half table_i = 0;
 
     for (Elf64_Half i = SHN_BEGIN; i < elf_file->header->e_shnum; ++i) {
-        const Elf64_Shdr *table_section = &elf_file->sections[i];
-        if (table_section->sh_type != SHT_SYMTAB)
+        const Elf64_Shdr *section = &elf_file->sections[i];
+        if (section->sh_type != SHT_SYMTAB && section->sh_type != SHT_DYNSYM)
             continue;
-        symbol_table->section = table_section;
+        struct elf_symbol_table *symbol_table =
+            &elf_file->symbol_tables[table_i++];
+        symbol_table->section = section;
         symbol_table->n_symbols =
-            table_section->sh_size / sizeof(*symbol_table->symbols);
+            section->sh_size / sizeof(*symbol_table->symbols);
 
         if (!(symbol_table->symbols = read_section_data(elf_file, fd, i)))
             goto error;
         if (!(symbol_table->names = read_section_data(
-                elf_file, fd, (Elf64_Half)table_section->sh_link)))
+                elf_file, fd, (Elf64_Half)section->sh_link)))
             goto error;
         ++symbol_table;
     }
@@ -160,7 +163,8 @@ read_symbol_tables(struct elf_file *elf_file, void *fd)
 error:
     if (elf_file->symbol_tables) {
         for (Elf64_Half i = 0; i < elf_file->n_symbol_tables; ++i) {
-            symbol_table = &elf_file->symbol_tables[i];
+            const struct elf_symbol_table *symbol_table =
+                &elf_file->symbol_tables[i];
             elf_free(symbol_table->symbols);
             elf_free(symbol_table->names);
         }

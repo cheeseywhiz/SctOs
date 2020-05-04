@@ -305,11 +305,13 @@ static void
 print_symbol_tables(const struct elf_file *elf_file)
 {
     printf("\nsymbol tables:\n");
-    printf("%20s  %-32s %-11s %-11s %-16s %18s %20s\n",
-        "index", "name", "binding", "type", "section", "value", "size");
+
     for (Elf64_Half i = 0; i < elf_file->n_symbol_tables; ++i) {
         const struct elf_symbol_table *symbol_table =
             &elf_file->symbol_tables[i];
+        printf("%-14.14s %5s  %-32s %-11s %-11s %-16s %18s %20s\n",
+            &elf_file->section_names[symbol_table->section->sh_name],
+            "index", "name", "binding", "type", "section", "value", "size");
         for (Elf64_Xword j = 0; j < symbol_table->n_symbols; ++j)
             print_symbol(elf_file, symbol_table, j);
     }
@@ -359,27 +361,26 @@ print_symbol(const struct elf_file *elf_file,
 static const struct elf_symbol_table* get_symbol_table(const struct elf_file*,
                                                        Elf64_Half);
 static void print_relocation(const struct elf_rel_table*,
-                             const struct elf_symbol_table*, Elf64_Xword);
+                             const struct elf_symbol_table*, Elf64_Xword, bool);
 
 static void
 print_relocations(const struct elf_file *elf_file)
 {
     printf("\nrelocations:\n");
-    printf(
-        "%20s %-15s %18s %-32s %18s %19s\n",
-        "index", "type", "virtual address", "symbol", "symbol value", "addend");
 
     for (Elf64_Half i = 0; i < elf_file->n_rel_tables; ++i) {
         const struct elf_rel_table *rel_table = &elf_file->rel_tables[i];
         const struct elf_symbol_table *symbol_table =
             get_symbol_table(elf_file, (Elf64_Half)rel_table->section->sh_link);
         printf(
-            "relocation table: %s -> %s\n",
+            "relocation table: %s -> %s\n%20s %-15s %18s %-32s %18s %19s\n",
             &elf_file->section_names[rel_table->section->sh_name],
             &elf_file->section_names[elf_file->sections[
-                rel_table->section->sh_info].sh_name]);
+                rel_table->section->sh_info].sh_name],
+            "index", "type", "virtual address", "symbol", "symbol value",
+            "addend");
         for (Elf64_Xword j = 0; j < rel_table->n_relocations; ++j)
-            print_relocation(rel_table, symbol_table, j);
+            print_relocation(rel_table, symbol_table, j, true);
     }
 }
 
@@ -399,8 +400,9 @@ get_symbol_table(const struct elf_file *elf_file, Elf64_Half ndx)
 }
 
 static void
-print_relocation(const struct elf_rel_table *rel_table,
-                 const struct elf_symbol_table *symbol_table, Elf64_Xword j)
+print_relocation(
+    const struct elf_rel_table *rel_table,
+    const struct elf_symbol_table *symbol_table, Elf64_Xword j, bool print_addr)
 {
     const Elf64_Rela *rela = &rel_table->relocations[j];
     const Elf64_Sym *symbol = symbol_table
@@ -413,10 +415,11 @@ print_relocation(const struct elf_rel_table *rel_table,
             rela->r_addend < 0 ? -(Elf64_Xword)rela->r_addend
                                : (Elf64_Xword)rela->r_addend);
 
-    printf(
-        "%20lu %-15s %#18lx %-32.32s %#18lx %19s\n",
-        j, elf_relocation_type_str[ELF64_R_TYPE(*rela)],
-        rela->r_offset, symbol ? &symbol_table->names[symbol->st_name] : "",
+    printf("%20lu %-15s ", j, elf_relocation_type_str[ELF64_R_TYPE(*rela)]);
+    if (print_addr)
+        printf("%#18lx ", rela->r_offset);
+    printf("%-32.32s %#18lx %19s\n",
+        symbol ? &symbol_table->names[symbol->st_name] : "",
         symbol ? symbol->st_value : 0, addend_hex);
 }
 
