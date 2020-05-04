@@ -19,7 +19,6 @@ OBJECT_CFLAGS += -MMD -MP
 CPPFLAGS += -iquote include
 KERNEL_CFLAGS += -ffreestanding
 TEST_CFLAGS += -O0 -ggdb
-TEST_OBJECT_CFLAGS += -fpie
 KERNEL_LDLIBS += -lgcc
 LINKER_SCRIPT := linker.ld
 
@@ -66,8 +65,8 @@ $(BUILD_TARGET)/%.o: %.s
 $(BUILD_TARGET)/%.o: %.c
 	@$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
-$(BUILD_HOST)/readelf: $(BUILD_HOST)/test/readelf.o $(BUILD_HOST)/lib/string.o $(BUILD_HOST)/lib/readelf.o
-	@$(CC) $(CFLAGS) $(TEST_CFLAGS) -static-pie -o $@ $^
+$(BUILD_HOST)/readelf: $(BUILD_HOST)/test/readelf.o $(BUILD_HOST)/lib/readelf.o
+	@$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $@ $^
 
 $(BUILD_HOST)/%.o: %.c
 	@$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
@@ -88,9 +87,9 @@ build-tree: $(BUILD_TREE)
 tests: build-tree $(TEST_EXECS)
 
 clean:
-	-$(RM) $(OBJECTS) $(DEPS) $(KERNEL) $(TEST_EXECS)
-	-for f in $(shell echo $(BUILD_TREE) | tr ' ' '\n' | sort -r); do \
-		rmdir $$f 2>/dev/null; \
+	@-$(RM) $(OBJECTS) $(DEPS) $(KERNEL) $(TEST_EXECS) vgcore.*
+	@for f in $(shell echo $(BUILD_TREE) | tr ' ' '\n' | sort -r); do \
+		rmdir $$f 1>/dev/null 2>&1 || true; \
 	done
 
 qemu: all

@@ -7,3 +7,4 @@ compile_commands.json
 opsys
 readelf
 small-exec
+vgcore.*

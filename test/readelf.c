@@ -53,11 +53,10 @@ end:
         if (fd >= 0)
             close(fd);
 
-        if (bad) {
+        if (bad)
             ++returncode;
-        } else {
+        else
             print_elf_file(&elf_file);
-        }
 
         free_elf_file(&elf_file);
     }
@@ -118,6 +117,12 @@ static void print_section_headers(const struct elf_file*);
 static void print_symbol_tables(const struct elf_file*);
 static void print_relocations(const struct elf_file*);
 
+struct mmap_entry;
+static struct mmap_entry* mmap_get(const struct elf_file*, Elf64_Xword*);
+static void mmap_free(const struct mmap_entry*, Elf64_Xword);
+static void mmap_sort(struct mmap_entry*, Elf64_Xword);
+static void mmap_print(const struct mmap_entry*, Elf64_Xword);
+
 static void
 print_elf_file(const struct elf_file *elf_file)
 {
@@ -126,6 +131,16 @@ print_elf_file(const struct elf_file *elf_file)
     print_section_headers(elf_file);
     print_symbol_tables(elf_file);
     print_relocations(elf_file);
+    if (elf_file->header->e_type != ET_EXEC
+        && elf_file->header->e_type != ET_DYN)
+        return;
+    Elf64_Xword n_entries;
+    struct mmap_entry *entries;
+    if (!(entries = mmap_get(elf_file, &n_entries)))
+        return;
+    mmap_sort(entries, n_entries);
+    mmap_print(entries, n_entries);
+    mmap_free(entries, n_entries);
 }
 
 static void
@@ -173,22 +188,16 @@ print_program_headers(const struct elf_file *elf_file)
     }
 }
 
+static void print_phdr_type(Elf64_Word);
+static void print_phdr_flags(Elf64_Word);
+
 static void
 print_program_header(const struct elf_file *elf_file, const Elf64_Phdr *header)
 {
-    if (header->p_type <= PT_MAX)
-        printf("%-7s ", elf_segment_type_str[header->p_type]);
-    else if (PT_LOOS <= header->p_type && header->p_type <= PT_HIOS)
-        printf("%-7x ", header->p_type - PT_LOOS);
-    else if (PT_LOPROC <= header->p_type && header->p_type <= PT_HIPROC)
-        printf("%-7x ", header->p_type - PT_LOPROC);
-    else
-        printf("%-7u ", header->p_type);
+    print_phdr_type(header->p_type);
+    print_phdr_flags(header->p_flags);
 
-    printf("%c%c%c   %#18lx %#18lx %#18lx %#18lx %#9lx ",
-        header->p_flags & PF_R ? 'R' : ' ',
-        header->p_flags & PF_W ? 'W' : ' ',
-        header->p_flags & PF_X ? 'X' : ' ',
+    printf("  %#18lx %#18lx %#18lx %#18lx %#9lx ",
         header->p_offset, header->p_filesz,
         header->p_vaddr, header->p_memsz,
         header->p_align);
@@ -206,6 +215,27 @@ print_program_header(const struct elf_file *elf_file, const Elf64_Phdr *header)
     }
 
     puts("");
+}
+
+static void print_phdr_type(Elf64_Word type)
+{
+    if (type <= PT_MAX)
+        printf("%-7s ", elf_segment_type_str[type]);
+    else if (PT_LOOS <= type && type <= PT_HIOS)
+        printf("%-7x ", type - PT_LOOS);
+    else if (PT_LOPROC <= type && type <= PT_HIPROC)
+        printf("%-7x ", type - PT_LOPROC);
+    else
+        printf("%-7u ", type);
+}
+
+static void
+print_phdr_flags(Elf64_Word flags)
+{
+    printf("%c%c%c ",
+        flags & PF_R ? 'R' : ' ',
+        flags & PF_W ? 'W' : ' ',
+        flags & PF_X ? 'X' : ' ');
 }
 
 static void print_section_header(const struct elf_file*, const Elf64_Shdr*);
@@ -388,4 +418,134 @@ print_relocation(const struct elf_rel_table *rel_table,
         j, elf_relocation_type_str[ELF64_R_TYPE(*rela)],
         rela->r_offset, symbol ? &symbol_table->names[symbol->st_name] : "",
         symbol ? symbol->st_value : 0, addend_hex);
+}
+
+struct mmap_entry {
+    Elf64_Addr addr;
+    Elf64_Addr end;
+    const Elf64_Phdr *phdr;
+    const char *section;
+    const char *symbol;
+};
+
+static struct mmap_entry*
+mmap_get(const struct elf_file *elf_file, Elf64_Xword *n_entries)
+{
+    *n_entries = elf_file->header->e_phnum
+        ? (Elf64_Xword)(elf_file->header->e_phnum - 1)
+        : 0;
+
+    for (Elf64_Half i = 0; i < elf_file->header->e_shnum; ++i) {
+        if (elf_file->sections[i].sh_flags & SHF_ALLOC)
+            ++*n_entries;
+    }
+
+    for (Elf64_Half i = 0; i < elf_file->n_symbol_tables; ++i)
+        *n_entries += elf_file->symbol_tables[i].n_symbols;
+    struct mmap_entry *entries;
+    if (!(entries = elf_alloc(sizeof(*entries) * *n_entries)))
+        return NULL;
+
+    for (Elf64_Half i = 0; i < *n_entries; ++i) {
+        struct mmap_entry *entry = &entries[i];
+        entry->addr = 0;
+        entry->end = 0;
+        entry->phdr = NULL;
+        entry->section = NULL;
+        entry->symbol = NULL;
+    }
+
+    Elf64_Xword entry_i = 0;
+
+    for (Elf64_Half i = 1; i < elf_file->header->e_phnum; ++i) {
+        const Elf64_Phdr *header = &elf_file->program_headers[i];
+        struct mmap_entry *entry = &entries[entry_i++];
+        entry->addr = header->p_vaddr;
+        entry->end = header->p_vaddr + header->p_memsz;
+        entry->phdr = header;
+    }
+
+    for (Elf64_Half i = 0; i < elf_file->header->e_shnum; ++i) {
+        const Elf64_Shdr *header = &elf_file->sections[i];
+        if (!(header->sh_flags & SHF_ALLOC))
+            continue;
+        struct mmap_entry *entry = &entries[entry_i++];
+        entry->addr = header->sh_addr;
+        entry->end = header->sh_addr + header->sh_size;
+        entry->section = &elf_file->section_names[header->sh_name];
+    }
+
+    for (Elf64_Half i = 0; i < elf_file->n_symbol_tables; ++i) {
+        const struct elf_symbol_table *symbol_table =
+            &elf_file->symbol_tables[i];
+
+        for (Elf64_Xword j = 0; j < symbol_table->n_symbols; ++j) {
+            const Elf64_Sym *symbol = &symbol_table->symbols[j];
+            struct mmap_entry *entry = &entries[entry_i++];
+            entry->addr = symbol->st_value;
+            entry->end = symbol->st_value + symbol->st_size;
+            entry->symbol = &symbol_table->names[symbol->st_name];
+        }
+    }
+
+    return entries;
+}
+
+static void
+mmap_free(const struct mmap_entry *entries, Elf64_Xword n_entries __unused)
+{
+    elf_free(entries);
+}
+
+static void mmap_entry_swap(struct mmap_entry*, struct mmap_entry*);
+
+/* insertion sort, stable */
+static void
+mmap_sort(struct mmap_entry* entries, Elf64_Xword n_entries)
+{
+    for (Elf64_Xword i = 1; i < n_entries; ++i) {
+        for (Elf64_Xword j = i; j; --j) {
+            struct mmap_entry *here = &entries[j], *back = &entries[j - 1];
+            if (!(back->addr > here->addr))
+                break;
+            mmap_entry_swap(here, back);
+        }
+    }
+}
+
+static void
+mmap_entry_swap(struct mmap_entry *e1, struct mmap_entry *e2)
+{
+    struct mmap_entry tmp = *e1;
+    *e1 = *e2;
+    *e2 = tmp;
+}
+
+static void
+mmap_print(const struct mmap_entry *entries, Elf64_Xword n_entries)
+{
+    printf("\nmmap:\n");
+
+    for (Elf64_Xword i = 0; i < n_entries; ++i) {
+        const struct mmap_entry *entry = &entries[i];
+        if (entry->symbol && !*entry->symbol)
+            continue;
+        printf("%#18lx ", entry->addr);
+
+        if (entry->end == entry->addr)
+            printf("%18s ", "");
+        else
+            printf("%#18lx ", entry->end);
+
+        if (entry->phdr) {
+            print_phdr_type(entry->phdr->p_type);
+            print_phdr_flags(entry->phdr->p_flags);
+        } else {
+            printf("%18s ", "");
+        }
+
+        printf("%-32.32s ", entry->section ? entry->section : "");
+        printf("%s ", entry->symbol && *entry->symbol ? entry->symbol : "");
+        puts("");
+    }
 }

@@ -64,7 +64,9 @@ free_elf_file(const struct elf_file *elf_file)
     if (!elf_file)
         return;
 
+    elf_free(elf_file->header);
     elf_free(elf_file->program_headers);
+    elf_free(elf_file->sections);
     elf_free(elf_file->section_names);
     elf_free(elf_file->interpreter);
 
@@ -78,6 +80,7 @@ free_elf_file(const struct elf_file *elf_file)
     elf_free(elf_file->symbol_tables);
     for (Elf64_Half i = 0; i < elf_file->n_rel_tables; ++i)
         elf_free(elf_file->rel_tables[i].relocations);
+    elf_free(elf_file->rel_tables);
 }
 
 static bool
