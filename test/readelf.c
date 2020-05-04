@@ -22,6 +22,7 @@ main(int argc, char *argv[])
     printf("sizeof(Elf64_Sym):  %lu\n", sizeof(Elf64_Sym));
     printf("sizeof(Elf64_Rel):  %lu\n", sizeof(Elf64_Rel));
     printf("sizeof(Elf64_Rela): %lu\n", sizeof(Elf64_Rela));
+    printf("sizeof(Elf64_Dyn):  %lu\n", sizeof(Elf64_Dyn));
     printf("section flags: ");
     for (size_t i = 0; i < ARRAY_LENGTH(elf_section_flags_str); ++i)
         printf("%s ", elf_section_flags_str[i]);
@@ -248,7 +249,7 @@ static void
 print_section_headers(const struct elf_file *elf_file)
 {
     printf("\nsection headers:\n");
-    printf("%-5s  %-16s %-18s %10s %10s %10s %18s %18s %9s %20s %10s %20s\n",
+    printf("%-5s  %-16s %-18s %10s %10s %10s %18s %18s %9s %18s %10s %20s\n",
         "index", "name", "type", "link", "info", "flags", "virtual address",
         "file offset", "alignment", "size in file", "entry size",
         "num elements");
@@ -294,7 +295,7 @@ print_section_header(const struct elf_file *elf_file, const Elf64_Shdr *header)
     else
         printf("%#-10x         ", type);
 
-    printf("%10u %10u %s %#18lx %#18lx %#9lx %20lu %10lu %20lu\n",
+    printf("%10u %10u %s %#18lx %#18lx %#9lx %#18lx %10lu %20lu\n",
         header->sh_link, header->sh_info, flags,
         header->sh_addr, header->sh_offset,
         header->sh_addralign,
@@ -367,7 +368,9 @@ print_symbol_tables(const struct elf_file *elf_file)
     for (Elf64_Half i = 0; i < elf_file->n_symbol_tables; ++i) {
         const struct elf_symbol_table *symbol_table =
             &elf_file->symbol_tables[i];
-        printf("%-14.14s %5s  %-32s %-11s %-11s %-16s %18s %20s\n",
+        if (symbol_table->n_symbols <= 1)
+            continue;
+        printf("%-14.14s %5s  %-32s %-11s %-11s %-16s %18s %18s\n",
             &elf_file->section_names[symbol_table->section->sh_name],
             "index", "name", "binding", "type", "section", "value", "size");
         for (Elf64_Xword j = 1; j < symbol_table->n_symbols; ++j)
@@ -412,8 +415,7 @@ print_symbol(const struct elf_file *elf_file,
         printf("%-16.16s ",
             &elf_file->section_names[section_names_section->sh_name]);
 
-    printf("%#18lx %20lu\n",
-        symbol->st_value, symbol->st_size);
+    printf("%#18lx %#18lx\n", symbol->st_value, symbol->st_size);
 }
 
 static const struct elf_symbol_table* get_symbol_table(const struct elf_file*,
@@ -430,6 +432,8 @@ print_relocations(const struct elf_file *elf_file)
 
     for (Elf64_Half i = 0; i < elf_file->n_rel_tables; ++i) {
         const struct elf_rel_table *rel_table = &elf_file->rel_tables[i];
+        if (!rel_table->n_relocations)
+            continue;
         const struct elf_symbol_table *symbol_table =
             get_symbol_table(elf_file, (Elf64_Half)rel_table->section->sh_link);
         printf(
