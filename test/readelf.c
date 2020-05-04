@@ -114,6 +114,7 @@ elf_read(void *fd_, void *buf, Elf64_Off offset, Elf64_Xword size)
 static void print_elf_header(const struct elf_file*);
 static void print_program_headers(const struct elf_file*);
 static void print_section_headers(const struct elf_file*);
+static void print_dynamic(const struct elf_file*);
 static void print_symbol_tables(const struct elf_file*);
 static void print_relocations(const struct elf_file*);
 
@@ -129,6 +130,7 @@ print_elf_file(const struct elf_file *elf_file)
     print_elf_header(elf_file);
     print_program_headers(elf_file);
     print_section_headers(elf_file);
+    print_dynamic(elf_file);
     print_symbol_tables(elf_file);
     print_relocations(elf_file);
     if (elf_file->header->e_type != ET_EXEC
@@ -176,6 +178,8 @@ static void print_program_header(const struct elf_file*, const Elf64_Phdr*);
 static void
 print_program_headers(const struct elf_file *elf_file)
 {
+    if (!elf_file->header->e_phnum)
+        return;
     printf("\nprogram headers:\n");
     printf("%5s %-7s %5s %18s %18s %18s %18s %9s %s\n",
         "index", "type", "flags", "file offset", "size in file",
@@ -298,12 +302,66 @@ print_section_header(const struct elf_file *elf_file, const Elf64_Shdr *header)
         header->sh_entsize ? header->sh_size / header->sh_entsize : 0);
 }
 
+static void
+print_dynamic(const struct elf_file *elf_file)
+{
+    if (!elf_file->dynamic)
+        return;
+    printf("\ndynamic:\n");
+
+    for (const Elf64_Dyn *dyn = elf_file->dynamic; dyn->d_tag != DT_NULL;
+         ++dyn) {
+        if (dyn->d_tag <= DT_MAX)
+            printf("%-12s ", elf_dyn_tag_str[dyn->d_tag]);
+        else if (DT_LOOS <= dyn->d_tag && dyn->d_tag <= DT_HIOS)
+            printf("%#-12lx ", dyn->d_tag);
+        else
+            printf("%#-12lx ", dyn->d_tag);
+
+        switch (dyn->d_tag) {
+        case DT_NEEDED:
+        case DT_PLTRELSZ:
+        case DT_RELASZ:
+        case DT_RELAENT:
+        case DT_STRSZ:
+        case DT_SYMENT:
+        case DT_SONAME:
+        case DT_RPATH:
+        case DT_RELSZ:
+        case DT_RELENT:
+        case DT_PLTREL:
+        case DT_INIT_ARRAYSZ:
+        case DT_FINI_ARRAYSZ:
+            printf("val: %#lx\n", dyn->d_un.d_val);
+            break;
+        case DT_PLTGOT:
+        case DT_HASH:
+        case DT_STRTAB:
+        case DT_SYMTAB:
+        case DT_RELA:
+        case DT_INIT:
+        case DT_FINI:
+        case DT_REL:
+        case DT_JMPREL:
+        case DT_INIT_ARRAY:
+        case DT_FINI_ARRAY:
+            printf("ptr: %#lx\n", dyn->d_un.d_ptr);
+            break;
+        default:
+            printf("unknown: %#lx\n", dyn->d_un.d_val);
+            break;
+        }
+    }
+}
+
 static void print_symbol(const struct elf_file*, const struct elf_symbol_table*,
                          Elf64_Xword);
 
 static void
 print_symbol_tables(const struct elf_file *elf_file)
 {
+    if (!elf_file->n_symbol_tables)
+        return;
     printf("\nsymbol tables:\n");
 
     for (Elf64_Half i = 0; i < elf_file->n_symbol_tables; ++i) {
@@ -366,6 +424,8 @@ static void print_relocation(const struct elf_rel_table*,
 static void
 print_relocations(const struct elf_file *elf_file)
 {
+    if (!elf_file->n_rel_tables)
+        return;
     printf("\nrelocations:\n");
 
     for (Elf64_Half i = 0; i < elf_file->n_rel_tables; ++i) {

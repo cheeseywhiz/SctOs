@@ -470,3 +470,84 @@ enum elf_segment_attributes {
 #define PF_MASKOS 0xff0000
 #define PF_MASK_PROC 0xff000000
 };
+
+/* elf64 figure 8 */
+typedef struct {
+    Elf64_Sxword d_tag;    /* determines interpretation of d_un */
+    union {
+        Elf64_Xword d_val; /* integer value */
+        Elf64_Addr  d_ptr; /* virtual address (pre-relocation) */
+    } d_un;
+} Elf64_Dyn;
+
+/* elf64 table 18 */
+enum elf_dyn_tag {
+    DT_NULL,            /* end of array */
+    DT_NEEDED,          /* val: offset to name of .so */
+    DT_PLTRELSZ,        /* val: size of relocation table associated with plt */
+    DT_PLTGOT,          /* ptr: address of .got.plt */
+    DT_HASH,            /* ptr: address of hash table */
+    DT_STRTAB,          /* ptr: address of dynamic string table */
+    DT_SYMTAB,          /* ptr: address of dynamic symbol table */
+    DT_RELA,            /* ptr: address of relocation table */
+    DT_RELASZ,          /* val: size of relocation table */
+    DT_RELAENT,         /* val: size of relocation entry */
+    DT_STRSZ,           /* val: size of string table */
+    DT_SYMENT,          /* val: size of each symbol table entry */
+    DT_INIT,            /* ptr: address of _init function */
+    DT_FINI,            /* ptr: address of _fini function */
+    DT_SONAME,          /* val: offset to name of this .so */
+    DT_RPATH,           /* val: offset to search path string */
+    DT_SYMBOLIC,        /* not quite sure what this means */
+    DT_REL,             /* ptr: address of relocation table */
+    DT_RELSZ,           /* val: size of relocation table */
+    DT_RELENT,          /* val: size of relocation entry */
+    DT_PLTREL,          /* val: type of relocations in plt, DT_REL[A] */
+    DT_DEBUG,           /* ptr: reserved */
+    DT_TEXTREL,         /* if present, the relocation table contains relocations
+                         * for a non-writable segment */
+    DT_JMPREL,          /* ptr: address of relocations associated with plt */
+    DT_BIND_NOW,        /* if present, process all relocations before
+                         * transferring control to program */
+    DT_INIT_ARRAY,      /* ptr: void (*init_func)(void) init_array[] */
+    DT_FINI_ARRAY,      /* ptr: void (*fini_func)(void) fini_array[] */
+    DT_INIT_ARRAYSZ,    /* val: size of init array */
+    DT_FINI_ARRAYSZ,    /* val: size of fini array */
+#define DT_MAX DT_FINI_ARRAYSZ
+#define DT_LOOS 0x60000000
+#define DT_HIOS 0x6fffffff
+#define DT_LOPROC 0x70000000
+#define DT_HIPROC 0x7fffffff
+};
+
+static const char *const elf_dyn_tag_str[] = {
+    _ENUM_STR(DT_, NULL),
+    _ENUM_STR(DT_, NEEDED),
+    _ENUM_STR(DT_, PLTRELSZ),
+    _ENUM_STR(DT_, PLTGOT),
+    _ENUM_STR(DT_, HASH),
+    _ENUM_STR(DT_, STRTAB),
+    _ENUM_STR(DT_, SYMTAB),
+    _ENUM_STR(DT_, RELA),
+    _ENUM_STR(DT_, RELASZ),
+    _ENUM_STR(DT_, RELAENT),
+    _ENUM_STR(DT_, STRSZ),
+    _ENUM_STR(DT_, SYMENT),
+    _ENUM_STR(DT_, INIT),
+    _ENUM_STR(DT_, FINI),
+    _ENUM_STR(DT_, SONAME),
+    _ENUM_STR(DT_, RPATH),
+    _ENUM_STR(DT_, SYMBOLIC),
+    _ENUM_STR(DT_, REL),
+    _ENUM_STR(DT_, RELSZ),
+    _ENUM_STR(DT_, RELENT),
+    _ENUM_STR(DT_, PLTREL),
+    _ENUM_STR(DT_, DEBUG),
+    _ENUM_STR(DT_, TEXTREL),
+    _ENUM_STR(DT_, JMPREL),
+    _ENUM_STR(DT_, BIND_NOW),
+    _ENUM_STR(DT_, INIT_ARRAY),
+    _ENUM_STR(DT_, FINI_ARRAY),
+    _ENUM_STR(DT_, INIT_ARRAYSZ),
+    _ENUM_STR(DT_, FINI_ARRAYSZ),
+};

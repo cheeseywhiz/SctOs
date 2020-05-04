@@ -22,6 +22,7 @@ struct elf_file {
     const Elf64_Shdr        *sections;
     const char              *section_names;
     const char              *interpreter;
+    const Elf64_Dyn         *dynamic;
     Elf64_Half               n_symbol_tables;
     struct elf_symbol_table *symbol_tables;
     Elf64_Half               n_rel_tables;
