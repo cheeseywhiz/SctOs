@@ -8,3 +8,4 @@ opsys
 readelf
 small-exec
 vgcore.*
+perf.*

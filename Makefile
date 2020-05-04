@@ -87,7 +87,7 @@ build-tree: $(BUILD_TREE)
 tests: build-tree $(TEST_EXECS)
 
 clean:
-	@-$(RM) $(OBJECTS) $(DEPS) $(KERNEL) $(TEST_EXECS) vgcore.*
+	@-$(RM) $(OBJECTS) $(DEPS) $(KERNEL) $(TEST_EXECS) vgcore.* perf.*
 	@for f in $(shell echo $(BUILD_TREE) | tr ' ' '\n' | sort -r); do \
 		rmdir $$f 1>/dev/null 2>&1 || true; \
 	done

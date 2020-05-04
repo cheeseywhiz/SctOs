@@ -306,12 +306,12 @@ print_section_header(const struct elf_file *elf_file, const Elf64_Shdr *header)
 static void
 print_dynamic(const struct elf_file *elf_file)
 {
-    if (!elf_file->dynamic)
+    if (!elf_file->dynamic.dynamic)
         return;
     printf("\ndynamic:\n");
 
-    for (const Elf64_Dyn *dyn = elf_file->dynamic; dyn->d_tag != DT_NULL;
-         ++dyn) {
+    for (const Elf64_Dyn *dyn = elf_file->dynamic.dynamic;
+         dyn->d_tag != DT_NULL; ++dyn) {
         if (dyn->d_tag <= DT_MAX)
             printf("%-12s ", elf_dyn_tag_str[dyn->d_tag]);
         else if (DT_LOOS <= dyn->d_tag && dyn->d_tag <= DT_HIOS)
@@ -321,13 +321,16 @@ print_dynamic(const struct elf_file *elf_file)
 
         switch (dyn->d_tag) {
         case DT_NEEDED:
+        case DT_SONAME:
+        case DT_RPATH:
+            printf("%s\n",
+                &elf_file->dynamic.symbol_table->names[dyn->d_un.d_val]);
+            break;
         case DT_PLTRELSZ:
         case DT_RELASZ:
         case DT_RELAENT:
         case DT_STRSZ:
         case DT_SYMENT:
-        case DT_SONAME:
-        case DT_RPATH:
         case DT_RELSZ:
         case DT_RELENT:
         case DT_PLTREL:
@@ -347,6 +350,13 @@ print_dynamic(const struct elf_file *elf_file)
         case DT_INIT_ARRAY:
         case DT_FINI_ARRAY:
             printf("ptr: %#lx\n", dyn->d_un.d_ptr);
+            break;
+        case DT_SYMBOLIC:
+        case DT_TEXTREL:
+        case DT_DEBUG:
+        case DT_BIND_NOW:
+            /* test for presence only, no value */
+            printf("\n");
             break;
         default:
             printf("unknown: %#lx\n", dyn->d_un.d_val);
@@ -489,15 +499,28 @@ print_relocation(
         symbol ? symbol->st_value : 0, addend_hex);
 }
 
+enum mmap_entry_type {
+    MET_NONE,
+    MET_PHDR,
+    MET_SHDR,
+    MET_SYM,
+    MET_REL,
+};
+
 struct mmap_entry {
     Elf64_Addr addr;
     Elf64_Addr end;
-    const Elf64_Phdr *phdr;
-    const char *section;
-    const char *symbol;
-    const struct elf_rel_table    *rel_table;
-    const struct elf_symbol_table *rel_sym_table;
-    Elf64_Xword                    rel_index;
+    enum mmap_entry_type type;
+    union {
+        const Elf64_Phdr *phdr;
+        const char *section;
+        const char *symbol;
+        struct {
+            const struct elf_rel_table    *table;
+            const struct elf_symbol_table *sym_table;
+            Elf64_Xword                    index;
+        } r;
+    } u;
 };
 
 static struct mmap_entry*
@@ -524,12 +547,7 @@ mmap_get(const struct elf_file *elf_file, Elf64_Xword *n_entries)
         struct mmap_entry *entry = &entries[i];
         entry->addr = 0;
         entry->end = 0;
-        entry->phdr = NULL;
-        entry->section = NULL;
-        entry->symbol = NULL;
-        entry->rel_table = NULL;
-        entry->rel_sym_table = NULL;
-        entry->rel_index = 0;
+        entry->type = MET_NONE;
     }
 
     Elf64_Xword entry_i = 0;
@@ -539,7 +557,8 @@ mmap_get(const struct elf_file *elf_file, Elf64_Xword *n_entries)
         struct mmap_entry *entry = &entries[entry_i++];
         entry->addr = header->p_vaddr;
         entry->end = header->p_vaddr + header->p_memsz;
-        entry->phdr = header;
+        entry->type = MET_PHDR;
+        entry->u.phdr = header;
     }
 
     for (Elf64_Half i = 0; i < elf_file->header->e_shnum; ++i) {
@@ -549,7 +568,8 @@ mmap_get(const struct elf_file *elf_file, Elf64_Xword *n_entries)
         struct mmap_entry *entry = &entries[entry_i++];
         entry->addr = header->sh_addr;
         entry->end = header->sh_addr + header->sh_size;
-        entry->section = &elf_file->section_names[header->sh_name];
+        entry->type = MET_SHDR;
+        entry->u.section = &elf_file->section_names[header->sh_name];
     }
 
     for (Elf64_Half i = 0; i < elf_file->n_symbol_tables; ++i) {
@@ -561,7 +581,8 @@ mmap_get(const struct elf_file *elf_file, Elf64_Xword *n_entries)
             struct mmap_entry *entry = &entries[entry_i++];
             entry->addr = symbol->st_value;
             entry->end = symbol->st_value + symbol->st_size;
-            entry->symbol = &symbol_table->names[symbol->st_name];
+            entry->type = MET_SYM;
+            entry->u.symbol = &symbol_table->names[symbol->st_name];
         }
     }
 
@@ -574,9 +595,10 @@ mmap_get(const struct elf_file *elf_file, Elf64_Xword *n_entries)
             const Elf64_Rela *rela = &rel_table->relocations[j];
             struct mmap_entry *entry = &entries[entry_i++];
             entry->addr = entry->end = rela->r_offset;
-            entry->rel_table = rel_table;
-            entry->rel_sym_table = rel_sym_table;
-            entry->rel_index = j;
+            entry->type = MET_REL;
+            entry->u.r.table = rel_table;
+            entry->u.r.sym_table = rel_sym_table;
+            entry->u.r.index = j;
         }
     }
 
@@ -620,7 +642,8 @@ mmap_print(const struct mmap_entry *entries, Elf64_Xword n_entries)
 
     for (Elf64_Xword i = 0; i < n_entries; ++i) {
         const struct mmap_entry *entry = &entries[i];
-        if (entry->symbol && !*entry->symbol)
+        if (entry->type == MET_NONE
+            || (entry->type == MET_SYM && !*entry->u.symbol))
             continue;
         printf("%#18lx ", entry->addr);
 
@@ -629,20 +652,19 @@ mmap_print(const struct mmap_entry *entries, Elf64_Xword n_entries)
         else
             printf("%#18lx ", entry->end);
 
-        if (entry->phdr) {
-            print_phdr_type(entry->phdr->p_type);
-            print_phdr_flags(entry->phdr->p_flags);
+        if (entry->type == MET_PHDR) {
+            print_phdr_type(entry->u.phdr->p_type);
+            print_phdr_flags(entry->u.phdr->p_flags);
         } else {
             printf("%18s ", "");
         }
 
-        printf("%-32.32s ", entry->section ? entry->section : "");
-        printf("%-32.32s ",
-            entry->symbol && *entry->symbol ? entry->symbol : "");
+        printf("%-32.32s ", entry->type == MET_SHDR ? entry->u.section : "");
+        printf("%-32.32s ", entry->type == MET_SYM ? entry->u.symbol : "");
 
-        if (entry->rel_table)
-            print_relocation(entry->rel_table, entry->rel_sym_table,
-                             entry->rel_index, false);
+        if (entry->type == MET_REL)
+            print_relocation(entry->u.r.table, entry->u.r.sym_table,
+                             entry->u.r.index, false);
         else
             puts("");
     }

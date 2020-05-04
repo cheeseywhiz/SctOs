@@ -12,7 +12,8 @@ init_elf_file(struct elf_file *elf_file)
     elf_file->sections = NULL;
     elf_file->section_names = NULL;
     elf_file->interpreter = NULL;
-    elf_file->dynamic = NULL;
+    elf_file->dynamic.dynamic = NULL;
+    elf_file->dynamic.symbol_table = NULL;
     elf_file->n_symbol_tables = 0;
     elf_file->symbol_tables = NULL;
     elf_file->n_rel_tables = 0;
@@ -24,8 +25,8 @@ static void* _elf_read(void *fd, Elf64_Off, Elf64_Xword);
 static bool read_program_headers(struct elf_file*, void*);
 static bool read_sections(struct elf_file*, void*);
 static bool read_interpreter(struct elf_file*, void*);
-static bool read_dynamic(struct elf_file*, void*);
 static bool read_symbol_tables(struct elf_file*, void*);
+static bool read_dynamic(struct elf_file*, void*);
 static bool read_relocations(struct elf_file*, void*);
 static const void* read_section_data(const struct elf_file*, void*, Elf64_Half);
 
@@ -59,6 +60,7 @@ readelf(struct elf_file *elf_file, void *fd)
 
 error:
     free_elf_file(elf_file);
+    init_elf_file(elf_file);
     return true;
 }
 
@@ -73,7 +75,7 @@ free_elf_file(const struct elf_file *elf_file)
     elf_free(elf_file->sections);
     elf_free(elf_file->section_names);
     elf_free(elf_file->interpreter);
-    elf_free(elf_file->dynamic);
+    elf_free(elf_file->dynamic.dynamic);
 
     for (Elf64_Half i = 0; i < elf_file->n_symbol_tables; ++i) {
         const struct elf_symbol_table *symbol_table =
@@ -118,28 +120,6 @@ read_interpreter(struct elf_file *elf_file, void *fd)
     }
 
     return false;
-}
-
-static bool
-read_dynamic(struct elf_file *elf_file, void *fd)
-{
-    const Elf64_Shdr *dynamic_section = NULL;
-    Elf64_Half dynamic_index = 0;
-
-    for (Elf64_Half i = 1; i < elf_file->header->e_shnum; ++i) {
-        const Elf64_Shdr *section = &elf_file->sections[i];
-        const char *name = &elf_file->section_names[section->sh_name];
-        if (section->sh_type != SHT_DYNAMIC || strcmp(name, ".dynamic"))
-            continue;
-        dynamic_section = section;
-        dynamic_index = i;
-        break;
-    }
-
-    if (!dynamic_section)
-        return false;
-    return !(elf_file->dynamic =
-                read_section_data(elf_file, fd, dynamic_index));
 }
 
 static bool
@@ -201,6 +181,46 @@ error:
     }
 
     elf_file->n_symbol_tables = 0;
+    return true;
+}
+
+static bool
+read_dynamic(struct elf_file *elf_file, void *fd)
+{
+    const Elf64_Shdr *dynamic_section = NULL;
+    Elf64_Half dynamic_index = 0;
+
+    for (Elf64_Half i = 1; i < elf_file->header->e_shnum; ++i) {
+        const Elf64_Shdr *section = &elf_file->sections[i];
+        if (section->sh_type != SHT_DYNAMIC)
+            continue;
+        dynamic_section = section;
+        dynamic_index = i;
+        break;
+    }
+
+    if (!dynamic_section)
+        return false;
+    if (!(elf_file->dynamic.dynamic =
+            read_section_data(elf_file, fd, dynamic_index)))
+        goto error;
+
+    for (Elf64_Half i = 0; i < elf_file->n_symbol_tables; ++i) {
+        const struct elf_symbol_table *symbol_table =
+            &elf_file->symbol_tables[i];
+        if (symbol_table->section->sh_type != SHT_DYNSYM)
+            continue;
+        elf_file->dynamic.symbol_table = symbol_table;
+        break;
+    }
+
+    if (!elf_file->dynamic.symbol_table)
+        goto error;
+    return false;
+
+error:
+    elf_free(elf_file->dynamic.dynamic);
+    elf_file->dynamic.symbol_table = NULL;
     return true;
 }
 

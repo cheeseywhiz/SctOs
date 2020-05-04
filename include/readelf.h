@@ -16,13 +16,18 @@ struct elf_rel_table {
     const Elf64_Rela *relocations;
 };
 
+struct elf_dynamic {
+    const Elf64_Dyn               *dynamic;
+    const struct elf_symbol_table *symbol_table;
+};
+
 struct elf_file {
     const Elf64_Ehdr        *header;
     const Elf64_Phdr        *program_headers;
     const Elf64_Shdr        *sections;
     const char              *section_names;
     const char              *interpreter;
-    const Elf64_Dyn         *dynamic;
+    struct elf_dynamic       dynamic;
     Elf64_Half               n_symbol_tables;
     struct elf_symbol_table *symbol_tables;
     Elf64_Half               n_rel_tables;
