@@ -10,3 +10,4 @@ small-exec
 vgcore.*
 perf.*
 introspect
+tags

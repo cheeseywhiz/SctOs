@@ -26,6 +26,7 @@ KERNEL_DIRS := lib src
 KERNEL_TREE := $(shell find $(KERNEL_DIRS) -type d)
 KERNEL_ASM_SOURCES := $(shell find $(KERNEL_DIRS) -name "*.s")
 KERNEL_C_SOURCES := $(shell find $(KERNEL_DIRS) -name "*.c")
+KERNEL_SOURCES := $(KERNEL_ASM_SOURCES) $(KERNEL_C_SOURCES)
 KERNEL_OBJECTS := $(KERNEL_ASM_SOURCES:%.s=%.o) $(KERNEL_C_SOURCES:%.c=%.o)
 KERNEL_OBJECTS := $(addprefix $(BUILD_TARGET)/, $(KERNEL_OBJECTS))
 KERNEL_TREE := $(addprefix $(BUILD_TARGET)/, $(KERNEL_TREE))
@@ -38,6 +39,7 @@ TEST_OBJECTS := $(addprefix $(BUILD_HOST)/, $(TEST_OBJECTS))
 TEST_TREE := $(addprefix $(BUILD_HOST)/, $(TEST_TREE))
 TEST_EXECS := $(addprefix $(BUILD_HOST)/, readelf small-exec introspect)
 
+SOURCES := $(KERNEL_SOURCES) $(TEST_SOURCES)
 OBJECTS := $(KERNEL_OBJECTS) $(TEST_OBJECTS)
 DEPS := $(OBJECTS:%.o=%.d)
 BUILD_TREE := $(BUILD_TARGET) $(BUILD_HOST) $(KERNEL_TREE) $(TEST_TREE)
@@ -57,27 +59,30 @@ $(BUILD_TREE):
 	@mkdir -p $@
 
 $(KERNEL): $(LINKER_SCRIPT) $(KERNEL_OBJECTS)
-	@$(TARGET_CC) $(CFLAGS) $(KERNEL_CFLAGS) -nostdlib -T $(LINKER_SCRIPT) -o $@ $(KERNEL_OBJECTS) $(KERNEL_LDLIBS)
+	$(TARGET_CC) $(CFLAGS) $(KERNEL_CFLAGS) -nostdlib -T $(LINKER_SCRIPT) -o $@ $(KERNEL_OBJECTS) $(KERNEL_LDLIBS)
 
 $(BUILD_TARGET)/%.o: %.s
-	@$(TARGET_AS) -o $@ $<
+	$(TARGET_AS) -o $@ $<
 
 $(BUILD_TARGET)/%.o: %.c
-	@$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+	$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
 $(BUILD_HOST)/readelf: $(addprefix $(BUILD_HOST)/, lib/readelf.o test/glibc-readelf.o test/readelf.o test/readelf-main.o)
-	@$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $@ $^
 
 $(BUILD_HOST)/%.o: %.c
-	@$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
 $(BUILD_HOST)/small-exec: test/small-exec.S
-	@$(CPP) $< | $(AS) -o $@.o -
-	@$(LD) -nostdlib -o $@ $@.o
-	@-$(RM) $@.o
+	$(CPP) $< | $(AS) -o $@.o -
+	$(LD) -nostdlib -o $@ $@.o
+	-$(RM) $@.o
 
 $(BUILD_HOST)/introspect: $(addprefix $(BUILD_HOST)/, lib/elf.o test/glibc-readelf.o test/readelf.o test/introspect.o)
-	@$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $@ $^
+
+tags: $(SOURCES)
+	ctags --exclude=cross/\* --exclude=\*.json --exclude=Makefile -R .
 
 -include $(DEPS)
 
