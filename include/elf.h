@@ -551,3 +551,16 @@ static const char *const elf_dyn_tag_str[] = {
     _ENUM_STR(DT_, INIT_ARRAYSZ),
     _ENUM_STR(DT_, FINI_ARRAYSZ),
 };
+
+/* elf64 figure 9 */
+struct elf_hash_table {
+    Elf64_Word        nbucket;
+    Elf64_Word        nchain;
+    const Elf64_Word *buckets;
+    const Elf64_Word *chains;
+    const Elf64_Sym  *symbols;
+    const char       *strings;
+};
+
+void init_hash_table(struct elf_hash_table *hash_table, void *addr,
+                     const Elf64_Sym *symbols, const char *strings);

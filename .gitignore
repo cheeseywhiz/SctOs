@@ -9,3 +9,4 @@ readelf
 small-exec
 vgcore.*
 perf.*
+introspect

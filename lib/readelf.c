@@ -155,7 +155,7 @@ read_symbol_tables(struct elf_file *elf_file, void *fd)
             &elf_file->symbol_tables[table_i++];
         symbol_table->section = section;
         symbol_table->n_symbols =
-            section->sh_size / sizeof(*symbol_table->symbols);
+            (Elf64_Word)(section->sh_size / sizeof(*symbol_table->symbols));
 
         if (!(symbol_table->symbols = read_section_data(elf_file, fd, i)))
             goto error;

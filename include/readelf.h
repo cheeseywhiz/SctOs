@@ -3,9 +3,11 @@
 #include "util.h"
 #include <stdbool.h>
 
+/* the DT_HASH table containing chains of Elf64_Words gives us a hint that this
+ * bounds the size of the symbol table */
 struct elf_symbol_table {
     const Elf64_Shdr *section;
-    Elf64_Xword       n_symbols;
+    Elf64_Word        n_symbols;
     const Elf64_Sym  *symbols;
     const char       *names;
 };

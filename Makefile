@@ -10,14 +10,14 @@ BUILD_HOST ?= build/host
 
 TARGET_CC := ./cross/bin/i686-elf-gcc
 TARGET_AS := ./cross/bin/i686-elf-as
-CFLAGS += -std=gnu99 -O2
+CFLAGS += -std=gnu99 -O2 -Wl,--hash-style=sysv
 CFLAGS += -Werror -Wall -Wextra -pedantic -Wshadow -Wpointer-arith -Wcast-align \
 		  -Wwrite-strings -Wmissing-prototypes -Wmissing-declarations \
 		  -Wredundant-decls -Wnested-externs -Winline -Wno-long-long \
 		  -Wconversion -Wstrict-prototypes -fdiagnostics-color=always
 OBJECT_CFLAGS += -MMD -MP
 CPPFLAGS += -iquote include
-KERNEL_CFLAGS += -ffreestanding
+KERNEL_CFLAGS += -ffreestanding -Wl,-z,separate-code
 TEST_CFLAGS += -O0 -ggdb
 KERNEL_LDLIBS += -lgcc
 LINKER_SCRIPT := linker.ld
@@ -36,7 +36,7 @@ TEST_SOURCES := $(shell find lib test -name "*.c")
 TEST_OBJECTS := $(TEST_SOURCES:%.c=%.o)
 TEST_OBJECTS := $(addprefix $(BUILD_HOST)/, $(TEST_OBJECTS))
 TEST_TREE := $(addprefix $(BUILD_HOST)/, $(TEST_TREE))
-TEST_EXECS := $(addprefix $(BUILD_HOST)/, readelf small-exec)
+TEST_EXECS := $(addprefix $(BUILD_HOST)/, readelf small-exec introspect)
 
 OBJECTS := $(KERNEL_OBJECTS) $(TEST_OBJECTS)
 DEPS := $(OBJECTS:%.o=%.d)
@@ -65,7 +65,7 @@ $(BUILD_TARGET)/%.o: %.s
 $(BUILD_TARGET)/%.o: %.c
 	@$(TARGET_CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
-$(BUILD_HOST)/readelf: $(BUILD_HOST)/test/readelf.o $(BUILD_HOST)/lib/readelf.o
+$(BUILD_HOST)/readelf: $(addprefix $(BUILD_HOST)/, lib/readelf.o test/glibc-readelf.o test/readelf.o test/readelf-main.o)
 	@$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $@ $^
 
 $(BUILD_HOST)/%.o: %.c
@@ -75,6 +75,9 @@ $(BUILD_HOST)/small-exec: test/small-exec.S
 	@$(CPP) $< | $(AS) -o $@.o -
 	@$(LD) -nostdlib -o $@ $@.o
 	@-$(RM) $@.o
+
+$(BUILD_HOST)/introspect: $(addprefix $(BUILD_HOST)/, lib/elf.o test/glibc-readelf.o test/readelf.o test/introspect.o)
+	@$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $@ $^
 
 -include $(DEPS)
 
