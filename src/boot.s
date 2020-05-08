@@ -1,3 +1,4 @@
+/* this is the x86 entry point and multiboot header */
 .set ALIGN,     1 << 0
 .set MEMINFO,   1 << 1
 .set FLAGS,     ALIGN | MEMINFO
@@ -24,6 +25,9 @@ boot_page_table1:
     .skip 4096
 
 .section .text
+.code32
+/* bios enters _start in protected mode and paging off.
+ * we set up paging, call kernel_main, and halt */
 .global _start
 .type _start, @function
 _start:

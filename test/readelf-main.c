@@ -1,6 +1,8 @@
+/* this program parses several elf files. comparable to unix readelf(3) */
 /* TODO: port this program to my operating system */
 #include "readelf.h"
 #include "test-readelf.h"
+#include "glibc-readelf.h"
 #include <stdio.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -58,9 +60,10 @@ main(int argc __unused, const char *argv[])
         bool bad = false;
         struct elf_file elf_file;
         init_elf_file(&elf_file);
-        int fd;
+        struct elf_glibc_fd fd;
+        fd.fname = fname;
 
-        if ((fd = open(fname, O_RDONLY)) < 0) {
+        if ((fd.fd = open(fname, O_RDONLY)) < 0) {
             fprintf(stderr, "open(\"%s\"): %d %s\n",
                     fname, errno, strerror(errno));
             bad = true;
@@ -73,8 +76,8 @@ main(int argc __unused, const char *argv[])
         }
 
 end:
-        if (fd >= 0)
-            close(fd);
+        if (fd.fd >= 0)
+            close(fd.fd);
 
         if (bad)
             ++returncode;
@@ -91,6 +94,8 @@ static enum set_flags_exit set_flag(char direction, char flag);
 static void print_help(void);
 static const char *program_name;
 
+/* set the global flag variables based on the given argv. when finished, argv
+ * will point to the first input file arg. */
 static enum set_flags_exit
 set_flags(const char **argv[])
 {
@@ -144,6 +149,8 @@ end:
     }
 }
 
+/* set the corresponding global flag based on the given command line option and
+ * direction (+/-) */
 static enum set_flags_exit
 set_flag(char direction, char flag)
 {
@@ -198,6 +205,7 @@ print_help(void)
     printf("Usage: %s %s", program_name, usage);
 }
 
+/* print each part of the elf_file struct, based on the global flags */
 static void
 print_elf_file(const struct elf_file *elf_file)
 {

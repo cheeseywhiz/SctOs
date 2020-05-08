@@ -1,4 +1,5 @@
-/* copied from xv6 */
+/* copied from xv6
+ * general memory and string manipulation standard functions */
 #include "x86.h"
 #include "string.h"
 #include <stddef.h>

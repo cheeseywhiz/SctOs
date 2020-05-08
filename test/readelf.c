@@ -1,3 +1,5 @@
+/* this file contains facilities for printing the information found in a
+ * struct elf_file produced by the lib readelf function */
 #include "elf.h"
 #include "util.h"
 #include "string.h"
@@ -78,8 +80,8 @@ print_program_header(const struct elf_file *elf_file, const Elf64_Phdr *header)
                 && header->p_vaddr <= section->sh_addr
                 && section->sh_addr < header->p_vaddr + header->p_memsz
                 && header->p_vaddr <= section->sh_addr + section->sh_size
-                && section->sh_addr + section->sh_size <= header->p_vaddr + header->p_memsz
-        )
+                && section->sh_addr + section->sh_size
+                    <= header->p_vaddr + header->p_memsz)
             printf("%s ", &elf_file->section_names[section->sh_name]);
     }
 
@@ -320,6 +322,7 @@ print_relocations(const struct elf_file *elf_file)
     }
 }
 
+/* get the symbol table item that has the given section index as its section */
 static const struct elf_symbol_table*
 get_symbol_table(const struct elf_file *elf_file, Elf64_Half ndx)
 {
@@ -378,6 +381,9 @@ print_hash_table(const struct elf_hash_table *hash_table)
     }
 }
 
+/* generate the array of program headers, sections, symbols, and relocations
+ * that form the memory map of the elf file's execution model. the length of the
+ * array is output into n_entries. */
 struct mmap_entry*
 mmap_get(const struct elf_file *elf_file, Elf64_Xword *n_entries)
 {
@@ -468,7 +474,7 @@ mmap_free(const struct mmap_entry *entries, Elf64_Xword n_entries __unused)
 
 static void mmap_entry_swap(struct mmap_entry*, struct mmap_entry*);
 
-/* insertion sort, stable */
+/* sort the array by a stable insertion sort */
 void
 mmap_sort(struct mmap_entry* entries, Elf64_Xword n_entries)
 {
@@ -482,7 +488,7 @@ mmap_sort(struct mmap_entry* entries, Elf64_Xword n_entries)
     }
 }
 
-void
+static void
 mmap_entry_swap(struct mmap_entry *e1, struct mmap_entry *e2)
 {
     struct mmap_entry tmp = *e1;
@@ -511,7 +517,7 @@ mmap_print(const struct mmap_entry *entries, Elf64_Xword n_entries)
             print_phdr_type(entry->u.phdr->p_type);
             print_phdr_flags(entry->u.phdr->p_flags);
         } else {
-            printf("%18s ", "");
+            printf("%11s ", "");
         }
 
         printf("%-32.32s ", entry->type == MET_SHDR ? entry->u.section : "");

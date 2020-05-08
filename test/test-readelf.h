@@ -37,7 +37,11 @@ struct mmap_entry {
     } u;
 };
 
+/* generate the array of program headers, sections, symbols, and relocations
+ * that form the memory map of the elf file's execution model. the length of the
+ * array is output into n_entries. */
 struct mmap_entry* mmap_get(const struct elf_file*, Elf64_Xword*);
 void mmap_free(const struct mmap_entry*, Elf64_Xword);
+/* sort the array by a stable insertion sort */
 void mmap_sort(struct mmap_entry*, Elf64_Xword);
 void mmap_print(const struct mmap_entry*, Elf64_Xword);

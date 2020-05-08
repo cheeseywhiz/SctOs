@@ -1,9 +1,11 @@
+/* this file contains a facility to parse elf files */
 #include "readelf.h"
 #include "elf.h"
 #include "util.h"
 #include "string.h"
 #include <stdbool.h>
 
+/* init the elf_file with NULL/0 members */
 void
 init_elf_file(struct elf_file *elf_file)
 {
@@ -30,6 +32,8 @@ static bool read_dynamic(struct elf_file*, void*);
 static bool read_relocations(struct elf_file*, void*);
 static const void* read_section_data(const struct elf_file*, void*, Elf64_Half);
 
+/* read each part of the elf file given by fd
+ * returns if an error occurred */
 bool
 readelf(struct elf_file *elf_file, void *fd)
 {
@@ -37,7 +41,7 @@ readelf(struct elf_file *elf_file, void *fd)
         goto error;
 
     if (!ELF_VERIFY_MAGIC(*elf_file->header)) {
-        elf_on_not_elf(elf_file);
+        elf_on_not_elf(fd);
         goto error;
     }
 
@@ -90,6 +94,8 @@ free_elf_file(const struct elf_file *elf_file)
     elf_free(elf_file->rel_tables);
 }
 
+/* reads the program headers area of the elf file.
+ * the size and offset of such are in the elf file's header. */
 static bool
 read_program_headers(struct elf_file *elf_file, void *fd)
 {
@@ -100,6 +106,8 @@ read_program_headers(struct elf_file *elf_file, void *fd)
         sizeof(*elf_file->program_headers) * elf_file->header->e_phnum));
 }
 
+/* reads the section headers area of the elf file.
+ * the size and offset of such are in the elf file's header. */
 static bool
 read_sections(struct elf_file *elf_file, void *fd)
 {
@@ -108,6 +116,7 @@ read_sections(struct elf_file *elf_file, void *fd)
         sizeof(*elf_file->sections) * elf_file->header->e_shnum));
 }
 
+/* reads the elf file's interpreter file name from the .interp section */
 static bool
 read_interpreter(struct elf_file *elf_file, void *fd)
 {
@@ -122,6 +131,8 @@ read_interpreter(struct elf_file *elf_file, void *fd)
     return false;
 }
 
+/* reads the symbol tables from each symbol table section.
+ * SYMTAB (of course) and DYNSYM sections are symbol table sections. */
 static bool
 read_symbol_tables(struct elf_file *elf_file, void *fd)
 {
@@ -184,6 +195,7 @@ error:
     return true;
 }
 
+/* read the dynamic section */
 static bool
 read_dynamic(struct elf_file *elf_file, void *fd)
 {
@@ -227,6 +239,8 @@ error:
 static const void*
 convert_rel_to_rela(const struct elf_file*, void*, Elf64_Half);
 
+/* reads the relocations from each relocation section. "rel" type relocations
+ * are converted into "rela" type relocations with an offset of 0. */
 static bool
 read_relocations(struct elf_file *elf_file, void *fd)
 {
@@ -284,6 +298,7 @@ error:
     return true;
 }
 
+/* convert "rel" type relocations to "rela" type relocations with offset 0 */
 static const void*
 convert_rel_to_rela(const struct elf_file *elf_file, void *fd, Elf64_Half i)
 {
@@ -321,6 +336,7 @@ end:
     return NULL;
 }
 
+/* return a copy of the given section read from the elf file */
 static const void*
 read_section_data(const struct elf_file *elf_file, void *fd, Elf64_Half i)
 {
@@ -367,6 +383,6 @@ elf_free(const void *ptr __unused)
 /* the user may define this function */
 
 __weak void
-elf_on_not_elf(const struct elf_file *elf_file __unused)
+elf_on_not_elf(void *fd __unused)
 {
 }

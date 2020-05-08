@@ -1,3 +1,5 @@
+/* this is the main kernel routine, called from _start with basic paging enabled
+ * and in protected mode */
 #include "terminal.h"
 #include "vga.h"
 #include <stddef.h>
@@ -21,10 +23,10 @@ kernel_main(void) {
     for (int i = 0; i < VGA_HEIGHT + 1; ++i) {
         if (i % 2)
             tprintf("Hello, kernel world!\tkernel_main = \t%p;\n",
-                    kernel_main);
+                    (void*)(size_t)kernel_main);
         else
             tprintf("Goodbye, kernel world!\tkprintf = \t%p;\n",
-                    generic_printf);
+                    (void*)(size_t)generic_printf);
     }
 
     tprintf("%lu\n", (size_t)kernel_main);

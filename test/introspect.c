@@ -1,3 +1,5 @@
+/* this program reads its own _DYNAMIC table and prints out its dynamic symbol
+ * table */
 #include "elf.h"
 #include "readelf.h"
 #include "test-readelf.h"

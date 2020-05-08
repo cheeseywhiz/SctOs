@@ -1,3 +1,5 @@
+/* this file contains a generic printf facility that can be used to implement
+ * printf for specific output methods */
 #include "generic_printf.h"
 #include "string.h"
 #include "util.h"
@@ -14,8 +16,18 @@ static void puts(write_func, const char*);
 static const char *const digits = "fedcba9876543210123456789abcdef";
 #define GET_DIGIT(n, base) (digits[(n) % (base) + 15])
 
+/* printf can handle %, l, u, s, c, p, x */
 void
 generic_printf(write_func write, const char *format, ...) {
+    /*
+     * XXX:
+     * expansion ideas:
+     *   - have generic function take a void *fd and pass it to write_func
+     *     in order to implement sprintf and fprintf, in a similar fashion to
+     *     elf_read
+     *   - have generic function take va_list in order to have function wrappers
+     *     instead of just macro wrappers
+     */
     const char *first, *last;
     va_list ap;
     bool format_mode = false;
@@ -51,6 +63,7 @@ generic_printf(write_func write, const char *format, ...) {
                 put_int(write, va_arg(ap, long));
                 break;
             case 2:
+            default:
                 put_int(write, va_arg(ap, long long));
                 break;
             }
@@ -66,6 +79,7 @@ generic_printf(write_func write, const char *format, ...) {
                 put_unsigned(write, va_arg(ap, unsigned long));
                 break;
             case 2:
+            default:
                 put_unsigned(write, va_arg(ap, unsigned long long));
                 break;
             }
@@ -100,10 +114,8 @@ generic_printf(write_func write, const char *format, ...) {
     va_end(ap);
 }
 
-/*
- * long long is the longest c signed int
- * and it's at most 20 characters long
- */
+/* long long is the longest c signed int
+ * and it's at most 20 characters long */
 static void
 put_int(write_func write, long long n) {
     char mem[21], *stack = mem + ARRAY_LENGTH(mem) - 1;

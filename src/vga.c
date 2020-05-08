@@ -1,5 +1,6 @@
 #include "vga.h"
 
+/* copy the bottom height - n lines to the top */
 void
 vga_scroll(size_t n) {
     for (size_t y = n; y < VGA_HEIGHT; ++y) {

@@ -81,7 +81,7 @@ $(BUILD_HOST)/small-exec: test/small-exec.S
 $(BUILD_HOST)/introspect: $(addprefix $(BUILD_HOST)/, lib/elf.o test/glibc-readelf.o test/readelf.o test/introspect.o)
 	$(CC) $(CFLAGS) $(TEST_CFLAGS) -o $@ $^
 
-tags: $(SOURCES)
+tags: $(SOURCES) $(shell find . -name "*.h" -not -path "./cross/*")
 	ctags --exclude=cross/\* --exclude=\*.json --exclude=Makefile -R .
 
 -include $(DEPS)
@@ -100,5 +100,5 @@ clean:
 		rmdir $$f 1>/dev/null 2>&1 || true; \
 	done
 
-qemu: all
-	-qemu-system-i386 -kernel $(BUILD_TARGET)/opsys
+qemu: kernel
+	qemu-system-i386 -kernel $(BUILD_TARGET)/opsys &

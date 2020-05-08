@@ -1,3 +1,5 @@
+/* this program is a small executable that we can inspect with the readelf
+ * utility */
 #include <asm/unistd.h>
 
 .section .data

@@ -1,3 +1,4 @@
+/* this file contains helper functions that pertain to the elf spec */
 #include "elf.h"
 #include "string.h"
 #ifdef __x86_64__
@@ -7,6 +8,7 @@ struct hash_table_lengths {
     Elf64_Word nchain;
 };
 
+/* elf64 figure 9 */
 void
 init_hash_table(struct elf_hash_table *hash_table, void *addr,
                 const Elf64_Sym *symbols, const char *strings)

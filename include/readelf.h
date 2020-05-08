@@ -36,15 +36,21 @@ struct elf_file {
     struct elf_rel_table    *rel_tables;
 };
 
+/* init the elf_file with NULL/0 members */
 void init_elf_file(struct elf_file*);
-/* returns if an error occurred */
+/* read each part of the elf file given by fd.
+ * returns if an error occurred. */
 bool readelf(struct elf_file*, void *fd);
 void free_elf_file(const struct elf_file*);
 
-/* the user must define these */
-
+/* XXX: the user must define these */
+/* read size bytes at offset bytes from the beginning of file fd into buf.
+ * return if an error occurred. */
 bool elf_read(void *fd, void *buf, Elf64_Off offset, Elf64_Xword size);
+/* allocate size uninitialized bytes */
 __malloc void* elf_alloc(Elf64_Xword size);
+/* free a pointer that originated from elf_alloc */
 void elf_free(const void*);
-/* the user may define this */
-void elf_on_not_elf(const struct elf_file*);
+/* XXX: the user may define this */
+/* called when the given file is not an elf file. intended for logging. */
+void elf_on_not_elf(void *fd);

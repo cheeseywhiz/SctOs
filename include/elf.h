@@ -14,35 +14,35 @@ typedef  int64_t Elf64_Sxword;
 
 /* elf64 table 2 */
 enum elf_ident_index {
-    EI_MAG0,
-    EI_MAG1,
-    EI_MAG2,
-    EI_MAG3,
-    EI_CLASS,
-    EI_ENDIANNESS,
-    EI_VERSION,
-    EI_OSABI,
-    EI_ABIVERSION,
+    EI_MAG0,        /* ELF_VERIFY_MAGIC */
+    EI_MAG1,        /*  ^ */
+    EI_MAG2,        /*  | */
+    EI_MAG3,        /* -| */
+    EI_CLASS,       /* enum elf_class */
+    EI_ENDIANNESS,  /* enum elf_endianness */
+    EI_VERSION,     /* enum elf_version */
+    EI_OSABI,       /* enum elf_osabi */
+    EI_ABIVERSION,  /* no enum rn */
     EI_PAD,
-    EI_NIDENT = 16,
+    EI_NIDENT = 16, 
 };
 
 /* elf64 figure 2 */
 typedef struct {
     unsigned char e_ident[EI_NIDENT];
-    Elf64_Half    e_type;
-    Elf64_Half    e_machine;
-    Elf64_Word    e_version;
-    Elf64_Addr    e_entry;
-    Elf64_Off     e_phoff;
-    Elf64_Off     e_shoff;
-    Elf64_Word    e_flags;
-    Elf64_Half    e_ehsize;
-    Elf64_Half    e_phentsize;
-    Elf64_Half    e_phnum;
-    Elf64_Half    e_shentsize;
-    Elf64_Half    e_shnum;
-    Elf64_Half    e_shstrndx;
+    Elf64_Half    e_type;      /* enum elf_type */
+    Elf64_Half    e_machine;   /* enum elf_machine */
+    Elf64_Word    e_version;   /* enum elf_version */
+    Elf64_Addr    e_entry;     /* virtual address of program entry point */
+    Elf64_Off     e_phoff;     /* offset to program headers */
+    Elf64_Off     e_shoff;     /* offset to section headers */
+    Elf64_Word    e_flags;     /* processor specific flags */
+    Elf64_Half    e_ehsize;    /* size of elf header */
+    Elf64_Half    e_phentsize; /* size of program header entry */
+    Elf64_Half    e_phnum;     /* number of program headers */
+    Elf64_Half    e_shentsize; /* size of section header entry */
+    Elf64_Half    e_shnum;     /* number of section headers */
+    Elf64_Half    e_shstrndx;  /* section header index of section names table */
 } Elf64_Ehdr;
 
 #define ELF_VERIFY_MAGIC(hdr) \
@@ -55,9 +55,9 @@ typedef struct {
 
 /* elf64 table 3 */
 enum elf_class {
-    ELFCLASSNONE,
-    ELFCLASS32,
-    ELFCLASS64,
+    ELFCLASSNONE, /* invalid class */
+    ELFCLASS32,   /* 32 bit object */
+    ELFCLASS64,   /* 64 bit object */
 };
 
 static const char *const elf_class_str[] = {
@@ -117,11 +117,11 @@ static const char *const elf_osabi_str[] = {
 
 /* elf64 table 6 */
 enum elf_type {
-    ET_NONE,
-    ET_REL,
-    ET_EXEC,
-    ET_DYN,
-    ET_CORE,
+    ET_NONE, /* invalid type */
+    ET_REL,  /* relocatable object */
+    ET_EXEC, /* statically linked+loaded executable */
+    ET_DYN,  /* shared object */
+    ET_CORE, /* core file */
 #define ET_LOOS 0xfe00
 #define ET_HIOS 0xfeff
 #define ET_LOPROC 0xff00
@@ -136,6 +136,7 @@ static const char *const elf_type_str[] = {
     _ENUM_STR(ET_, CORE),
 };
 
+/* glibc elf/elf.h */
 enum elf_machine {
     EM_NONE,
     EM_M32,
@@ -162,9 +163,10 @@ static const char *const elf_machine_str[] = {
     _ENUM_STR(EM_, X86_64),
 };
 
+/* implied from description of e_version in elf64 section 3 */
 enum elf_version {
-    EV_NONE,
-    EV_CURRENT,
+    EV_NONE,    /* invalid version */
+    EV_CURRENT, /* current version, future versions reserved */
 };
 
 static const char *const elf_version_str[] = {
@@ -173,49 +175,54 @@ static const char *const elf_version_str[] = {
 };
 
 /* elf64 table 7 */
-#define SHN_UNDEF 0
-#define SHN_BEGIN 1
-#define SHN_LOPROC 0xff00
-#define SHN_HIPROC 0xff1f
-#define SHN_LOOS 0xff20
-#define SHN_HIOS 0xff3f
-#define SHN_ABS 0xfff1
-#define SHN_COMMON 0xfff2
+enum elf_section_index {
+    SHN_UNDEF,           /* undefined symbol */
+    SHN_BEGIN,           /* index of first symbol entry */
+    SHN_LOPROC = 0xff00,
+    SHN_HIPROC = 0xff1f,
+    SHN_LOOS = 0xff20,
+    SHN_HIOS = 0xff3f,
+    SHN_ABS = 0xfff1,    /* symbol does not reside in a section, but at an
+                          * absolute location */
+    SHN_COMMON = 0xfff2, /* common symbol */
+};
 
 /* elf64 figure 3 */
 typedef struct {
-    Elf64_Word  sh_name;
-    Elf64_Word  sh_type;
-    Elf64_Xword sh_flags;
-    Elf64_Addr  sh_addr;
-    Elf64_Off   sh_offset;
-    Elf64_Xword sh_size;
-    Elf64_Word  sh_link;
-    Elf64_Word  sh_info;
-    Elf64_Xword sh_addralign;
-    Elf64_Xword sh_entsize;
+    Elf64_Word  sh_name;      /* offset of name in string table */
+    Elf64_Word  sh_type;      /* enum elf_section_type */
+    Elf64_Xword sh_flags;     /* enum elf_section_flags */
+    Elf64_Addr  sh_addr;      /* virtual address of section */
+    Elf64_Off   sh_offset;    /* file location of section */
+    Elf64_Xword sh_size;      /* size of section in file */
+    Elf64_Word  sh_link;      /* rela: symbol table referred to by relocations
+                               * symtab: string table of symbol names */
+    Elf64_Word  sh_info;      /* rela: section that relocations apply to
+                               * symtab: index of first non-local symbol */
+    Elf64_Xword sh_addralign; /* address alignment boundary */
+    Elf64_Xword sh_entsize;   /* if section is an array of entries, the size of
+                               * each entry */
 } Elf64_Shdr;
 
 /* elf64 table 8 + glibc elf/elf.h */
 enum elf_section_type {
-    SHT_NULL,
-    SHT_PROGBITS,
-    SHT_SYMTAB,
-    SHT_STRTAB,
-    SHT_RELA,
-    SHT_HASH,
-    SHT_DYNAMIC,
-    SHT_NOTE,
-    SHT_NOBITS,
-    SHT_REL,
+    SHT_NULL,     /* invalid type */
+    SHT_PROGBITS, /* initialized code or data */
+    SHT_SYMTAB,   /* symbol table: Elf64_Sym array */
+    SHT_STRTAB,   /* string table reffered to by a symbol table */
+    SHT_RELA,     /* Elf64_Rela */
+    SHT_HASH,     /* struct elf_hash_table */
+    SHT_DYNAMIC,  /* Elf64_Dyn array */
+    SHT_NOTE,     /* eg .note etc */
+    SHT_NOBITS,   /* Occupies space in memory but not in file (eg .bss) */
+    SHT_REL,      /* Elf64_Rel */
     SHT_RESERVED,
-    SHT_DYNSYM,
+    SHT_DYNSYM,   /* dynamic symbol table */
     SHT_INIT_ARRAY,
     SHT_FINI_ARRAY,
     SHT_PREINIT_ARRAY,
     SHT_GROUP,
-/* number of defined types */
-    SHT_NUM,
+    SHT_NUM,      /* number of defined types */
 #define SHT_LOOS 0x60000000
 #define SHT_HIOS 0x6fffffff
 #define SHT_LOPROC 0x70000000
@@ -241,11 +248,12 @@ static const char *const elf_section_type_str[] = {
     _ENUM_STR(SHT_, GROUP),
 };
 
-/* elf64 table 9 + glibc elf/elf.h */
+/* elf64 table 9 */
 enum elf_section_flags {
     SHF_WRITE = 1 << 0,            /* writable */
     SHF_ALLOC = 1 << 1,            /* occupies memory in execution model */
     SHF_EXECINSTR = 1 << 2,        /* executable */
+/* glibc elf.elf.h */
     SHF_MERGE = 1 << 3,            /* might be merged */
     SHF_STRINGS = 1 << 5,          /* Contains null-terminated strings */
     SHF_INFO_LINK = 1 << 6,        /* sh_info contains SHT index */
@@ -254,7 +262,7 @@ enum elf_section_flags {
     SHF_GROUP = 1 << 9,            /* section is member of a group */
     SHF_TLS = 1 << 10,             /* thread local storage */
     SHF_COMPRESSED = 1 << 11,      /* contains compressed data */
-    SHF_MASKOS = 0xff00000,
+#define SHF_MASKOS 0xff00000
 #define SHF_MASKPROC 0xf0000000
 };
 
@@ -423,8 +431,8 @@ static const char *const elf_relocation_type_str[] = {
 
 /* elf64 figure 6 */
 typedef struct {
-    Elf64_Word  p_type;   /* elf_segment_type */
-    Elf64_Word  p_flags;  /* elf_segment_attributes */
+    Elf64_Word  p_type;   /* enum elf_segment_type */
+    Elf64_Word  p_flags;  /* enum elf_segment_attributes */
     Elf64_Off   p_offset; /* offset in file */
     Elf64_Addr  p_vaddr;  /* execution virtual address */
     Elf64_Addr  p_paddr;  /* reserved */
@@ -473,7 +481,8 @@ enum elf_segment_attributes {
 
 /* elf64 figure 8 */
 typedef struct {
-    Elf64_Sxword d_tag;    /* determines interpretation of d_un */
+    Elf64_Sxword d_tag;    /* enum elf_dyn_tag: determines interpretation of
+                            * d_un */
     union {
         Elf64_Xword d_val; /* integer value */
         Elf64_Addr  d_ptr; /* virtual address (pre-relocation) */
@@ -562,5 +571,6 @@ struct elf_hash_table {
     const char       *strings;
 };
 
+/* elf64 figure 9 */
 void init_hash_table(struct elf_hash_table *hash_table, void *addr,
                      const Elf64_Sym *symbols, const char *strings);
