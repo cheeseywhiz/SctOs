@@ -90,9 +90,12 @@ print_program_header(const struct elf_file *elf_file, const Elf64_Phdr *header)
 
 static void print_phdr_type(Elf64_Word type)
 {
-    if (type <= PT_MAX)
+    if (type < PT_NUM)
         printf("%-7s ", elf_segment_type_str[type]);
-    else if (PT_LOOS <= type && type <= PT_HIOS)
+    else if (PT_GNU_STACK <= type && type <= PT_GNU_RELRO)
+        printf("%-7s ", elf_segment_type_str[PT_NUM + type - PT_GNU_STACK]);
+    else if ((PT_LOOS <= type && type < PT_GNU_STACK)
+            || (PT_GNU_RELRO < type && type < PT_HIOS))
         printf("%-7x ", type - PT_LOOS);
     else if (PT_LOPROC <= type && type <= PT_HIPROC)
         printf("%-7x ", type - PT_LOPROC);

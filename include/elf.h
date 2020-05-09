@@ -446,14 +446,16 @@ enum elf_segment_type {
     PT_NULL,    /* unused entry */
     PT_LOAD,    /* loadable segment */
     PT_DYNAMIC, /* dynamic linking tables */
-    PT_INTERP,  /* Requested program interpreter */
-    PT_NOTE,    /* Note sections */
-    PT_SHLIB,   /* Reserved */
-    PT_PHDR,    /* Program header table */
+    PT_INTERP,  /* requested program interpreter */
+    PT_NOTE,    /* note sections */
+    PT_SHLIB,   /* reserved */
+    PT_PHDR,    /* program header table */
 /* glibc elf/elf.h */
     PT_TLS,     /* thread local storage */
-#define PT_MAX PT_TLS
+    PT_NUM,     /* number of standard types */
 #define PT_LOOS 0x60000000
+    PT_GNU_STACK = 0x6474e551, /* program needs non-executable stack */
+    PT_GNU_RELRO,              /* set this region to RO after relocations */
 #define PT_HIOS 0x6fffffff
 #define PT_LOPROC 0x70000000
 #define PT_HIPROC 0x7fffffff
@@ -468,6 +470,8 @@ static const char *const elf_segment_type_str[] = {
     _ENUM_STR(PT_, SHLIB),
     _ENUM_STR(PT_, PHDR),
     _ENUM_STR(PT_, TLS),
+    [PT_NUM + 0] = "STACK",
+    [PT_NUM + 1] = "RELRO",
 };
 
 /* elf64 table 17 */
