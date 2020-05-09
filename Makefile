@@ -13,8 +13,8 @@ DISK := $(BUILD_EFI)/disk.img
 .PHONY: disk
 disk: $(DISK)
 
-KERNEL_CC := ./cross/bin/i686-elf-gcc
-KERNEL_AS := ./cross/bin/i686-elf-as
+KERNEL_CC := ./cross/bin/x86_64-elf-gcc
+KERNEL_AS := ./cross/bin/x86_64-elf-as
 
 CFLAGS += -std=gnu11 -O2
 CPPFLAGS += -iquote include -fdiagnostics-color=always
@@ -23,9 +23,9 @@ CFLAGS += -Werror -Wall -Wextra -pedantic -Wshadow -Wpointer-arith \
 	-Wredundant-decls -Wnested-externs -Winline -Wno-long-long -Wconversion \
 	-Wstrict-prototypes
 OBJECT_CFLAGS += -MMD -MP
-KERNEL_CFLAGS += -ffreestanding -Wl,-z,separate-code
-KERNEL_LDSCRIPT := linker.ld
-KERNEL_LDFLAGS += -nostdlib -T $(KERNEL_LDSCRIPT)
+KERNEL_CFLAGS += -ffreestanding -fPIE
+KERNEL_LDFLAGS += -nostdlib -static-pie -Wl,-static,-pie,--no-dynamic-linker \
+	-Wl,-z,separate-code,-z,max-page-size=0x1000,-z,noexecstack,-z,relro
 KERNEL_LDLIBS := -lgcc
 EFI_CPPFLAGS += -I/usr/include/efi -I/usr/include/efi/x86_64 \
 	-DGNU_EFI_USE_MS_ABI
@@ -41,7 +41,8 @@ EFI_LDLIBS := -lefi -lgnuefi -lgcc
 TEST_CFLAGS += -O0 -ggdb
 TEST_LDFLAGS += -Wl,--hash-style=sysv
 
-KERNEL_DIRS := lib src
+# TODO: KERNEL_DIRS := lib src
+KERNEL_DIRS := src
 KERNEL_ASM_SOURCES := $(shell find $(KERNEL_DIRS) -name "*.s")
 KERNEL_C_SOURCES := $(shell find $(KERNEL_DIRS) -name "*.c")
 KERNEL_SOURCES := $(KERNEL_ASM_SOURCES) $(KERNEL_C_SOURCES)
@@ -62,8 +63,8 @@ EFI_TREE := $(BUILD_EFI) $(addprefix $(BUILD_EFI)/, $(EFI_TREE))
 $(EFI_EXEC) $(EFI_SO) $(EFI_OBJECTS): | efi-tree
 $(BUILD_OVMF_VARS) $(DISK): | efi-tree
 
-TEST_DIRS := test lib
-TEST_SOURCES := $(shell find lib test -name "*.c")
+TEST_DIRS := test
+TEST_SOURCES := $(shell find $(TEST_DIRS) -name "*.c")
 TEST_OBJECTS := $(addprefix $(BUILD_TEST)/, $(TEST_SOURCES:%.c=%.o))
 TEST_EXECS := $(addprefix $(BUILD_TEST)/, readelf small-exec introspect)
 TEST_TREE := $(shell find $(TEST_DIRS) -type d)
@@ -76,7 +77,6 @@ BUILD_TREE += $(KERNEL_TREE) $(EFI_TREE) $(TEST_TREE)
 DEPS := $(OBJECTS:%.o=%.d)
 
 $(OBJECTS): CFLAGS += $(OBJECT_CFLAGS)
-$(BUILD_TEST)/lib/%.o: CFLAGS += -ffreestanding
 
 .SUFFIXES:
 
@@ -106,7 +106,7 @@ $(BUILD_EFI)/%.o: %.c
 $(BUILD_OVMF_VARS): $(OVMF_VARS)
 	install -m 644 $< $@
 
-$(DISK): $(EFI_EXEC)
+$(DISK): $(EFI_EXEC) $(KERNEL)
 	dd if=/dev/zero of=$@ bs=512 count=93750 status=none
 	sgdisk --new 1:0:0 --typecode 1:ef00 \
 		--change-name 1:"EFI system partition" $@
@@ -117,8 +117,9 @@ $(DISK): $(EFI_EXEC)
 	sudo umount /mnt
 	sudo losetup -d /dev/loop0
 
-$(BUILD_TEST)/readelf: $(addprefix $(BUILD_TEST)/, lib/readelf.o \
-		test/glibc-readelf.o test/readelf.o test/readelf-main.o)
+$(BUILD_TEST)/readelf: $(addprefix $(BUILD_KERNEL)/, lib/readelf.o)
+$(BUILD_TEST)/readelf: $(addprefix $(BUILD_TEST)/, test/glibc-readelf.o \
+		test/readelf.o test/readelf-main.o)
 	$(CC) $(CFLAGS) $(TEST_CFLAGS) $(TEST_LDFLAGS) -o $@ $^
 
 $(BUILD_TEST)/%.o: %.c
@@ -129,15 +130,15 @@ $(BUILD_TEST)/small-exec: test/small-exec.S
 	$(LD) -nostdlib -o $@ $@.o
 	-$(RM) $@.o
 
-$(BUILD_TEST)/introspect: $(addprefix $(BUILD_TEST)/, lib/elf.o \
-		test/glibc-readelf.o test/readelf.o test/introspect.o)
+$(BUILD_TEST)/introspect: $(addprefix $(BUILD_KERNEL)/, lib/elf.o)
+$(BUILD_TEST)/introspect: $(addprefix $(BUILD_TEST)/, test/glibc-readelf.o \
+		test/readelf.o test/introspect.o)
 	$(CC) $(CFLAGS) $(TEST_CFLAGS) $(TEST_LDFLAGS) -o $@ $^
 
 tags: $(SOURCES) $(shell find . -name "*.h" -not -path "./cross/*")
 	ctags --exclude=cross/\* --exclude=\*.json --exclude=Makefile -R .
 
-.PHONY: all kernel-tree efi-tree test-tree kernel efi tests clean qemu-x86 \
-	qemu-x64
+.PHONY: all kernel-tree efi-tree test-tree kernel efi tests clean qemu $(FORCE)
 
 all: tests kernel efi
 
@@ -164,10 +165,7 @@ clean:
 		rmdir $$f 1>/dev/null 2>&1 || true; \
 	done
 
-qemu-x86: kernel
-	qemu-system-i386 -kernel $(KERNEL) &
-
-qemu-x64: $(BUILD_OVMF_VARS) $(DISK)
+qemu: $(BUILD_OVMF_VARS) $(DISK)
 	qemu-system-x86_64 \
 		-cpu qemu64 \
 		-drive if=pflash,format=raw,unit=0,file=$(OVMF_CODE),readonly=on \
