@@ -11,3 +11,5 @@ vgcore.*
 perf.*
 introspect
 tags
+OVMF_CODE.fd
+OVMF_VARS.fd

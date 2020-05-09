@@ -4,3 +4,4 @@
 * [`x86-64-notes.pdf`](https://www.lri.fr/~filliatr/ens/compil/x86-64.pdf)
 * [`ELF64.pdf`](https://uclibc.org/docs/elf-64-gen.pdf)
 * [`ELF.pdf`](https://refspecs.linuxbase.org/elf/elf.pdf)
+* [`UEFI.pdf`](https://uefi.org/sites/default/files/resources/UEFI_Spec_2_8_A_Feb14.pdf)
