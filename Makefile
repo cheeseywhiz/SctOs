@@ -41,8 +41,7 @@ EFI_LDLIBS := -lefi -lgnuefi -lgcc
 TEST_CFLAGS += -O0 -ggdb
 TEST_LDFLAGS += -Wl,--hash-style=sysv
 
-# TODO: KERNEL_DIRS := lib src
-KERNEL_DIRS := src
+KERNEL_DIRS := lib src
 KERNEL_ASM_SOURCES := $(shell find $(KERNEL_DIRS) -name "*.s")
 KERNEL_C_SOURCES := $(shell find $(KERNEL_DIRS) -name "*.c")
 KERNEL_SOURCES := $(KERNEL_ASM_SOURCES) $(KERNEL_C_SOURCES)
@@ -106,7 +105,7 @@ $(BUILD_EFI)/%.o: %.c
 $(BUILD_OVMF_VARS): $(OVMF_VARS)
 	install -m 644 $< $@
 
-$(DISK): $(EFI_EXEC) $(KERNEL)
+$(DISK): $(EFI_EXEC) $(KERNEL) efi/startup.nsh
 	dd if=/dev/zero of=$@ bs=512 count=93750 status=none
 	sgdisk --new 1:0:0 --typecode 1:ef00 \
 		--change-name 1:"EFI system partition" $@
