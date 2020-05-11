@@ -48,7 +48,7 @@ print_program_headers(const struct elf_file *elf_file)
     if (!elf_file->header->e_phnum)
         return;
     printf("\nprogram headers:\n");
-    printf("%5s %-7s %5s %18s %18s %18s %18s %9s %s\n",
+    printf("%5s %-8s %5s %18s %18s %18s %18s %9s %s\n",
         "index", "type", "flags", "file offset", "size in file",
         "virtual address", "size in memory", "align", "sections");
 
@@ -91,16 +91,11 @@ print_program_header(const struct elf_file *elf_file, const Elf64_Phdr *header)
 static void print_phdr_type(Elf64_Word type)
 {
     if (type < PT_NUM)
-        printf("%-7s ", elf_segment_type_str[type]);
+        printf("%-8s ", elf_segment_type_str[type]);
     else if (PT_GNU_STACK <= type && type <= PT_GNU_RELRO)
-        printf("%-7s ", elf_segment_type_str[PT_NUM + type - PT_GNU_STACK]);
-    else if ((PT_LOOS <= type && type < PT_GNU_STACK)
-            || (PT_GNU_RELRO < type && type < PT_HIOS))
-        printf("%-7x ", type - PT_LOOS);
-    else if (PT_LOPROC <= type && type <= PT_HIPROC)
-        printf("%-7x ", type - PT_LOPROC);
+        printf("%-8s ", elf_segment_type_str[PT_NUM + type - PT_GNU_STACK]);
     else
-        printf("%-7u ", type);
+        printf("%-8x ", type);
 }
 
 static void
@@ -520,7 +515,7 @@ mmap_print(const struct mmap_entry *entries, Elf64_Xword n_entries)
             print_phdr_type(entry->u.phdr->p_type);
             print_phdr_flags(entry->u.phdr->p_flags);
         } else {
-            printf("%11s ", "");
+            printf("%12s ", "");
         }
 
         printf("%-32.32s ", entry->type == MET_SHDR ? entry->u.section : "");
