@@ -4,12 +4,9 @@ build
 compile_commands.json
 *.o
 *.d
-opsys
 readelf
 small-exec
 vgcore.*
 perf.*
 introspect
 tags
-OVMF_CODE.fd
-OVMF_VARS.fd

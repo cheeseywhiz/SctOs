@@ -22,32 +22,46 @@ init_elf_file(struct elf_file *elf_file)
     elf_file->rel_tables = NULL;
 }
 
-static void* _elf_read(void *fd, Elf64_Off, Elf64_Xword);
+static void* elf_read2(void *fd, Elf64_Off, Elf64_Xword);
 /* returns if an error occurred */
-static bool read_program_headers(struct elf_file*, void*);
-static bool read_sections(struct elf_file*, void*);
 static bool read_interpreter(struct elf_file*, void*);
 static bool read_symbol_tables(struct elf_file*, void*);
 static bool read_dynamic(struct elf_file*, void*);
 static bool read_relocations(struct elf_file*, void*);
+static const void* read_phdr_data(const struct elf_file*, void*, Elf64_Half);
 static const void* read_section_data(const struct elf_file*, void*, Elf64_Half);
+
+/* read only the elf header and the program headers. *phdr is set to a new
+ * allocation and must be freed. */
+bool
+read_program_headers(void *fd, const Elf64_Ehdr *ehdr, const Elf64_Phdr **phdrs)
+{
+    if (elf_read(fd, (void*)ehdr, 0, sizeof(*ehdr)))
+        return true;
+
+    if (!ELF_VERIFY_MAGIC(*ehdr)) {
+        elf_on_not_elf(fd);
+        return true;
+    }
+
+    if (!ehdr->e_phnum)
+        return false;
+    return !(*phdrs = elf_read2(fd, ehdr->e_phoff,
+                                sizeof(**phdrs) * ehdr->e_phnum));
+}
 
 /* read each part of the elf file given by fd
  * returns if an error occurred */
 bool
 readelf(struct elf_file *elf_file, void *fd)
 {
-    if (!(elf_file->header = _elf_read(fd, 0, sizeof(*elf_file->header))))
+    if (!(elf_file->header = elf_alloc(sizeof(*elf_file->header))))
         goto error;
-
-    if (!ELF_VERIFY_MAGIC(*elf_file->header)) {
-        elf_on_not_elf(fd);
+    if (read_program_headers(fd, elf_file->header, &elf_file->program_headers))
         goto error;
-    }
-
-    if (read_program_headers(elf_file, fd))
-        goto error;
-    if (read_sections(elf_file, fd))
+    if (!(elf_file->sections = elf_read2(
+            fd, elf_file->header->e_shoff,
+            sizeof(*elf_file->sections) * elf_file->header->e_shnum)))
         goto error;
     if (!(elf_file->section_names =
             read_section_data(elf_file, fd, elf_file->header->e_shstrndx)))
@@ -94,38 +108,15 @@ free_elf_file(const struct elf_file *elf_file)
     elf_free(elf_file->rel_tables);
 }
 
-/* reads the program headers area of the elf file.
- * the size and offset of such are in the elf file's header. */
-static bool
-read_program_headers(struct elf_file *elf_file, void *fd)
-{
-    if (!elf_file->header->e_phoff)
-        return false;
-    return !(elf_file->program_headers = _elf_read(
-        fd, elf_file->header->e_phoff,
-        sizeof(*elf_file->program_headers) * elf_file->header->e_phnum));
-}
-
-/* reads the section headers area of the elf file.
- * the size and offset of such are in the elf file's header. */
-static bool
-read_sections(struct elf_file *elf_file, void *fd)
-{
-    return !(elf_file->sections = _elf_read(
-        fd, elf_file->header->e_shoff,
-        sizeof(*elf_file->sections) * elf_file->header->e_shnum));
-}
-
-/* reads the elf file's interpreter file name from the .interp section */
+/* reads the elf file's interpreter file name from the INTERP program header */
 static bool
 read_interpreter(struct elf_file *elf_file, void *fd)
 {
-    for (Elf64_Half i = 1; i < elf_file->header->e_shnum; ++i) {
-        const Elf64_Shdr *section = &elf_file->sections[i];
-        const char *name = &elf_file->section_names[section->sh_name];
-        if (strcmp(name, ".interp"))
+    for (Elf64_Half i = 0; i < elf_file->header->e_phnum; ++i) {
+        const Elf64_Phdr *header = &elf_file->program_headers[i];
+        if (header->p_type != PT_INTERP)
             continue;
-        return !(elf_file->interpreter = read_section_data(elf_file, fd, i));
+        return !(elf_file->interpreter = read_phdr_data(elf_file, fd, i));
     }
 
     return false;
@@ -195,26 +186,26 @@ error:
     return true;
 }
 
-/* read the dynamic section */
+/* read the DYNAMIC program header */
 static bool
 read_dynamic(struct elf_file *elf_file, void *fd)
 {
-    const Elf64_Shdr *dynamic_section = NULL;
+    const Elf64_Phdr *dynamic_header = NULL;
     Elf64_Half dynamic_index = 0;
 
-    for (Elf64_Half i = 1; i < elf_file->header->e_shnum; ++i) {
-        const Elf64_Shdr *section = &elf_file->sections[i];
-        if (section->sh_type != SHT_DYNAMIC)
+    for (Elf64_Half i = 0; i < elf_file->header->e_phnum; ++i) {
+        const Elf64_Phdr *header = &elf_file->program_headers[i];
+        if (header->p_type != PT_DYNAMIC)
             continue;
-        dynamic_section = section;
+        dynamic_header = header;
         dynamic_index = i;
         break;
     }
 
-    if (!dynamic_section)
+    if (!dynamic_header)
         return false;
     if (!(elf_file->dynamic.dynamic =
-            read_section_data(elf_file, fd, dynamic_index)))
+            read_phdr_data(elf_file, fd, dynamic_index)))
         goto error;
 
     for (Elf64_Half i = 0; i < elf_file->n_symbol_tables; ++i) {
@@ -336,17 +327,25 @@ end:
     return NULL;
 }
 
+/* return a copy of the given program header from the elf file */
+static const void*
+read_phdr_data(const struct elf_file *elf_file, void *fd, Elf64_Half i)
+{
+    const Elf64_Phdr *header = &elf_file->program_headers[i];
+    return elf_read2(fd, header->p_offset, header->p_filesz);
+}
+
 /* return a copy of the given section read from the elf file */
 static const void*
 read_section_data(const struct elf_file *elf_file, void *fd, Elf64_Half i)
 {
     const Elf64_Shdr *section = &elf_file->sections[i];
-    return _elf_read(fd, section->sh_offset, section->sh_size);
+    return elf_read2(fd, section->sh_offset, section->sh_size);
 }
 
 /* wrap user's elf_read by passing it an allocated buffer */
 static void*
-_elf_read(void *fd, Elf64_Off offset, Elf64_Xword size)
+elf_read2(void *fd, Elf64_Off offset, Elf64_Xword size)
 {
     void *buf;
     if (!(buf = elf_alloc(size)))

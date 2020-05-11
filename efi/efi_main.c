@@ -1,22 +1,18 @@
-#include <stddef.h>
+/* this file loads the kernel executable into memory and runs it */
 #include <efi.h>
 #include <efilib.h>
-#include <efibind.h>
-#include "util.h"
 #include "efi-wrapper.h"
-
-static CHAR16* a2u(char*, UINT64);
+#include "readelf.h"
 
 EFI_STATUS
 efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
 {
-    InitializeLib(ImageHandle, SystemTable);
     EFI_STATUS Status = EFI_SUCCESS;
     EFI_LOADED_IMAGE *LoadedImage = NULL;
     EFI_FILE_HANDLE RootDir = NULL, File = NULL;
-    EFI_FILE_INFO *FileInfo = NULL;
-    char *data = NULL;
-    CHAR16 *udata = NULL;
+    Elf64_Ehdr ehdr;
+    const Elf64_Phdr *phdrs = NULL;
+    InitializeLib(ImageHandle, SystemTable);
 
     if (_EFI_ERROR(Status = uefi_call_wrapper(BS->HandleProtocol, 3,
             ImageHandle, &LoadedImageProtocol, (void**)&LoadedImage)))
@@ -24,52 +20,26 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
     if (!(RootDir = LibOpenRoot(LoadedImage->DeviceHandle)))
         goto error;
     if (_EFI_ERROR(Status = uefi_call_wrapper(RootDir->Open, 5,
-            RootDir, &File, L"\\startup.nsh", EFI_FILE_MODE_READ, 0)))
+            RootDir, &File, L"\\opsys", EFI_FILE_MODE_READ, 0)))
         goto finish;
-    if (!(FileInfo = LibFileInfo(File)))
+    if (read_program_headers(File, &ehdr, &phdrs))
         goto error;
-    if (!(data = AllocatePool(FileInfo->FileSize + 1)))
-        goto error;
-    UINT64 FileSize = FileInfo->FileSize;
-    if (_EFI_ERROR(Status = uefi_call_wrapper(File->Read, 3,
-            File, &FileSize, data)))
-        goto finish;
-    if (FileSize != FileInfo->FileSize)
-        goto error;
-    data[FileSize] = 0;
-    if (!(udata = a2u(data, FileSize)))
-        goto error;
-    Print(L"%s", udata);
 
 finish:
-    FreePool(udata);
-    FreePool(data);
-    FreePool(FileInfo);
+    elf_free(phdrs);
+    if (File)
+        uefi_call_wrapper(File->Close, 1, File);
     if (RootDir)
-        uefi_call_wrapper(RootDir->Close, 1, File);
+        uefi_call_wrapper(RootDir->Close, 1, RootDir);
 
     if (_EFI_ERROR(Status))
-        Print(L"%s\n\r", EFI_ERROR_STR(Status));
+        Print(L"%s\n", EFI_ERROR_STR(Status));
     else
-        Print(L"%s\n\t", L"SUCCESS");
+        Print(L"%s\n", L"SUCCESS");
 
     return Status;
 
 error:
     Status = EFI_ABORTED;
     goto finish;
-}
-
-/* gnu-efi/apps/t.c
- * convert 1-byte string into 2-byte string */
-static CHAR16*
-a2u(char *data, UINT64 length)
-{
-    CHAR16 *udata;
-    if (!(udata = AllocatePool((length + 1) * sizeof(CHAR16))))
-        return NULL;
-    for (UINT64 i = 0; i < length; ++i)
-        udata[i] = (CHAR16)data[i];
-    udata[length] = 0;
-    return udata;
 }

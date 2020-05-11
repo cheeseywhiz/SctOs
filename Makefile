@@ -16,8 +16,8 @@ disk: $(DISK)
 KERNEL_CC := ./cross/bin/x86_64-elf-gcc
 KERNEL_AS := ./cross/bin/x86_64-elf-as
 
-CFLAGS += -std=gnu11 -O2
-CPPFLAGS += -iquote include -fdiagnostics-color=always
+CFLAGS += -std=gnu11 -O2 -fdiagnostics-color=always
+CPPFLAGS += -iquote include
 CFLAGS += -Werror -Wall -Wextra -pedantic -Wshadow -Wpointer-arith \
 	-Wcast-align -Wwrite-strings -Wmissing-prototypes -Wmissing-declarations \
 	-Wredundant-decls -Wnested-externs -Winline -Wno-long-long -Wconversion \
@@ -52,12 +52,11 @@ KERNEL_TREE := $(shell find $(KERNEL_DIRS) -type d)
 KERNEL_TREE := $(BUILD_KERNEL) $(addprefix $(BUILD_KERNEL)/, $(KERNEL_TREE))
 $(KERNEL) $(KERNEL_OBJECTS): | kernel-tree
 
-EFI_DIRS := efi
-EFI_SOURCES := $(shell find $(EFI_DIRS) -name "*.c")
+EFI_SOURCES := $(shell find efi -name "*.c") lib/readelf.c
 EFI_OBJECTS := $(addprefix $(BUILD_EFI)/, $(EFI_SOURCES:%.c=%.o))
 EFI_SO := $(BUILD_EFI)/opsys-loader.so
 EFI_EXEC := $(BUILD_EFI)/opsys-loader.efi
-EFI_TREE := $(shell find $(EFI_DIRS) -type d)
+EFI_TREE := $(shell find efi -type d) lib
 EFI_TREE := $(BUILD_EFI) $(addprefix $(BUILD_EFI)/, $(EFI_TREE))
 $(EFI_EXEC) $(EFI_SO) $(EFI_OBJECTS): | efi-tree
 $(BUILD_OVMF_VARS) $(DISK): | efi-tree
@@ -118,7 +117,7 @@ $(DISK): $(EFI_EXEC) $(KERNEL) efi/startup.nsh
 
 $(BUILD_TEST)/readelf: $(addprefix $(BUILD_KERNEL)/, lib/readelf.o)
 $(BUILD_TEST)/readelf: $(addprefix $(BUILD_TEST)/, test/glibc-readelf.o \
-		test/readelf.o test/readelf-main.o)
+		test/print-elf.o test/readelf.o)
 	$(CC) $(CFLAGS) $(TEST_CFLAGS) $(TEST_LDFLAGS) -o $@ $^
 
 $(BUILD_TEST)/%.o: %.c
@@ -131,7 +130,7 @@ $(BUILD_TEST)/small-exec: test/small-exec.S
 
 $(BUILD_TEST)/introspect: $(addprefix $(BUILD_KERNEL)/, lib/elf.o)
 $(BUILD_TEST)/introspect: $(addprefix $(BUILD_TEST)/, test/glibc-readelf.o \
-		test/readelf.o test/introspect.o)
+		test/print-elf.o test/introspect.o)
 	$(CC) $(CFLAGS) $(TEST_CFLAGS) $(TEST_LDFLAGS) -o $@ $^
 
 tags: $(SOURCES) $(shell find . -name "*.h" -not -path "./cross/*")

@@ -36,6 +36,11 @@ struct elf_file {
     struct elf_rel_table    *rel_tables;
 };
 
+/* read only the elf header and the program headers. *phdr is set to a new
+ * allocation and must be freed. */
+bool read_program_headers(void *fd, const Elf64_Ehdr *ehdr,
+                          const Elf64_Phdr **phdrs);
+
 /* init the elf_file with NULL/0 members */
 void init_elf_file(struct elf_file*);
 /* read each part of the elf file given by fd.

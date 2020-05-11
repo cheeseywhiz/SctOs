@@ -2,7 +2,7 @@
  * table */
 #include "elf.h"
 #include "readelf.h"
-#include "test-readelf.h"
+#include "print-elf.h"
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>

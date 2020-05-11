@@ -1,7 +1,6 @@
 /* this file contains helper functions that pertain to the elf spec */
 #include "elf.h"
 #include "string.h"
-#ifdef __x86_64__
 
 struct hash_table_lengths {
     Elf64_Word nbucket;
@@ -40,5 +39,3 @@ elf64_hash(const unsigned char *name)
 
     return h;
 }*/
-
-#endif /* __x86_64__ */
