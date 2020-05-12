@@ -11,3 +11,6 @@
 #define NUM_PAGES(base, size) \
     (NEXT_PAGE((base) + (size) - 1 - PAGE_BASE(base)) / PAGE_SIZE)
 
+/* this is the "high half", where kernel memory lives, at -1GB */
+#define KERNEL_BASE 0xffffffffc0000000
+

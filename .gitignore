@@ -10,3 +10,4 @@ vgcore.*
 perf.*
 introspect
 tags
+out.txt

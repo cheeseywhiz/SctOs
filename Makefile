@@ -27,14 +27,14 @@ KERNEL_CFLAGS += -ffreestanding -fPIE
 KERNEL_LDFLAGS += -nostdlib -static-pie -Wl,-static,-pie,--no-dynamic-linker \
 	-Wl,-z,separate-code,-z,max-page-size=0x1000,-z,noexecstack,-z,relro
 KERNEL_LDLIBS := -lgcc
-EFI_CPPFLAGS += -I/usr/include/efi -I/usr/include/efi/x86_64 \
-	-DGNU_EFI_USE_MS_ABI
+EFI_CPPFLAGS += -I$(HOME)/.local/include/efi \
+	-I$(HOME)/.local/include/efi/x86_64 -DGNU_EFI_USE_MS_ABI
 EFI_CFLAGS += -mno-red-zone -mno-avx -fshort-wchar -fno-strict-aliasing \
 	-ffreestanding -fno-stack-protector -fno-merge-constants -fPIC \
 	-Wno-write-strings -Wno-redundant-decls -Wno-strict-prototypes
-EFI_CRT := /usr/lib/crt0-efi-x86_64.o
-EFI_LDSCRIPT := /usr/lib/elf_x86_64_efi.lds
-EFI_LDFLAGS += -nostdlib -shared -T $(EFI_LDSCRIPT) \
+EFI_CRT := $(HOME)/.local/lib/crt0-efi-x86_64.o
+EFI_LDSCRIPT := $(HOME)/.local/lib/elf_x86_64_efi.lds
+EFI_LDFLAGS += -nostdlib -shared -T $(EFI_LDSCRIPT) -L$(HOME)/.local/lib \
 	-Wl,-Bsymbolic,--warn-common,--defsym=EFI_SUBSYSTEM=0xa,--no-undefined \
 	-Wl,--fatal-warnings,--build-id=sha1,-z,nocombreloc
 EFI_LDLIBS := -lefi -lgnuefi -lgcc
@@ -165,9 +165,11 @@ clean:
 
 qemu: $(BUILD_OVMF_VARS) $(DISK)
 	qemu-system-x86_64 \
-		-cpu qemu64 \
 		-drive if=pflash,format=raw,unit=0,file=$(OVMF_CODE),readonly=on \
 		-drive if=pflash,format=raw,unit=1,file=$(BUILD_OVMF_VARS) \
 		-drive file=$(DISK),if=ide,format=raw \
 		-net none \
-		&
+		-nographic \
+		-serial mon:stdio \
+		-serial file:out.txt \
+		-cpu qemu64

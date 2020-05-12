@@ -14,17 +14,19 @@ __noreturn void exit_status(const char*, int line, EFI_STATUS, const CHAR16*,
                             ...);
 #define EXIT_STATUS(status, fmt, ...) \
     exit_status(__FILE__, __LINE__, (status), (fmt), ##__VA_ARGS__)
+#define EFI_ASSERT(cond) \
+    if (!(cond)) \
+        EXIT_STATUS(EFI_ABORTED, L"Failed assertion: %s", (L ## #cond))
 
 /* convert 8-bit string to 16-bit string */
 CHAR16* a2u(const char*a);
 
-#define _LONG_STR(s) (L##s)
-#define _ERROR_STR(suffix) \
-    [(EFI_ ## suffix) & ~EFI_ERROR_MASK] = _LONG_STR(#suffix)
+#define _ERROR_STR(suffix) [(EFI_ ## suffix) & ~EFI_ERROR_MASK] = (L ## #suffix)
 #define EFI_ERROR_STR(status) (efi_error_str[(status) & ~EFI_ERROR_MASK])
 
 /* uefi table 258 page 2210 / gnu-efi/inc/efierr.h */
 static const CHAR16 *const efi_error_str[] = {
+    _ERROR_STR(SUCCESS),
     _ERROR_STR(LOAD_ERROR),
     _ERROR_STR(INVALID_PARAMETER),
     _ERROR_STR(UNSUPPORTED),
@@ -56,4 +58,23 @@ static const CHAR16 *const efi_error_str[] = {
     _ERROR_STR(END_OF_FILE),
     _ERROR_STR(INVALID_LANGUAGE),
     _ERROR_STR(COMPROMISED_DATA),
+};
+
+/* uefi AllocatePages related definitions page 162 */
+#define _MT_STR(name) [Efi ## name] = (L ## #name)
+static const CHAR16 *const efi_memory_type_str[] = {
+    _MT_STR(ReservedMemoryType),
+    _MT_STR(LoaderCode),
+    _MT_STR(LoaderData),
+    _MT_STR(BootServicesCode),
+    _MT_STR(BootServicesData),
+    _MT_STR(RuntimeServicesCode),
+    _MT_STR(RuntimeServicesData),
+    _MT_STR(ConventionalMemory),
+    _MT_STR(UnusableMemory),
+    _MT_STR(ACPIReclaimMemory),
+    _MT_STR(ACPIMemoryNVS),
+    _MT_STR(MemoryMappedIO),
+    _MT_STR(MemoryMappedIOPortSpace),
+    _MT_STR(PalCode),
 };

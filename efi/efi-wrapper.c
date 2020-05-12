@@ -12,7 +12,7 @@ exit_status(const char *file, int line, EFI_STATUS Status, const CHAR16 *fmt,
     va_start(ap, fmt);
     VPrint(fmt, ap);
     va_end(ap);
-    Print(L"\n%s\n", EFI_ERROR_STR(Status));
+    Print(L"\n%d %s\n", Status, EFI_ERROR_STR(Status));
     Exit(Status, 0, NULL);
     while (TRUE)
         ;
