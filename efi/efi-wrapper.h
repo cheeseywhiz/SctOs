@@ -1,12 +1,22 @@
-/* thie file provides quality of life improvements on top of gnu-efi */
+/* this file provides quality of life improvements on top of gnu-efi */
 #pragma once
 #include <stddef.h>
 #include <efi.h>
 #include <efibind.h>
+#include "util.h"
 /* gnu-efi does not immediately wrap s in parens */
 #define _EFI_ERROR(s) EFI_ERROR((s))
 /* gnu-efi does not provide efi_main prototype for apps */
 EFI_STATUS efi_main(EFI_HANDLE, EFI_SYSTEM_TABLE*);
+
+/* print a message to console and print the error status */
+__noreturn void exit_status(const char*, int line, EFI_STATUS, const CHAR16*,
+                            ...);
+#define EXIT_STATUS(status, fmt, ...) \
+    exit_status(__FILE__, __LINE__, (status), (fmt), ##__VA_ARGS__)
+
+/* convert 8-bit string to 16-bit string */
+CHAR16* a2u(const char*a);
 
 #define _LONG_STR(s) (L##s)
 #define _ERROR_STR(suffix) \

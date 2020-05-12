@@ -34,7 +34,7 @@ static const void* read_section_data(const struct elf_file*, void*, Elf64_Half);
 /* read only the elf header and the program headers. *phdr is set to a new
  * allocation and must be freed. */
 bool
-read_program_headers(void *fd, const Elf64_Ehdr *ehdr, const Elf64_Phdr **phdrs)
+read_program_headers(void *fd, const Elf64_Ehdr *ehdr, Elf64_Phdr **phdrs)
 {
     if (elf_read(fd, (void*)ehdr, 0, sizeof(*ehdr)))
         return true;
@@ -57,7 +57,8 @@ readelf(struct elf_file *elf_file, void *fd)
 {
     if (!(elf_file->header = elf_alloc(sizeof(*elf_file->header))))
         goto error;
-    if (read_program_headers(fd, elf_file->header, &elf_file->program_headers))
+    if (read_program_headers(fd, elf_file->header,
+                             (Elf64_Phdr**)&elf_file->program_headers))
         goto error;
     if (!(elf_file->sections = elf_read2(
             fd, elf_file->header->e_shoff,
