@@ -179,4 +179,4 @@ qemu: $(BUILD_OVMF_VARS) $(DISK)
 		-serial file:out.txt \
 		-enable-kvm \
 		-cpu host \
-		-m 4G \
+		-m 6G \
