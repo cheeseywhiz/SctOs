@@ -7,8 +7,11 @@
 #include "util.h"
 #include "virtual-memory.h"
 
+static const CHAR16 *const kernel_fname = L"\\opsys";
+static EFI_FILE_HANDLE RootDir = NULL;
+
+static void load_kernel(const Elf64_Ehdr**, const Elf64_Phdr**);
 static void print_program_headers(const Elf64_Ehdr*, const Elf64_Phdr*);
-static void load_elf_pages(EFI_FILE_HANDLE, const Elf64_Ehdr*, Elf64_Phdr*);
 static void init_mmap(EFI_MEMORY_DESCRIPTOR*, UINT64*, UINT64*, UINT64*);
 static void print_memory_map(EFI_MEMORY_DESCRIPTOR*, UINT64);
 
@@ -17,6 +20,12 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
 {
     EFI_STATUS Status = EFI_SUCCESS;
     InitializeLib(ImageHandle, SystemTable);
+    EFI_LOADED_IMAGE *LoadedImage;
+    if (_EFI_ERROR(Status = uefi_call_wrapper(BS->HandleProtocol, 3,
+            ImageHandle, &LoadedImageProtocol, (void**)&LoadedImage)))
+        EXIT_STATUS(Status, L"handle LoadedImageProtocol");
+    if (!(RootDir = LibOpenRoot(LoadedImage->DeviceHandle)))
+        EXIT_STATUS(EFI_ABORTED, L"LibOpenRoot");
 
     /* TODO: bootloader sequence
      * acquire preliminary memory map
@@ -31,25 +40,12 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
      * jump to kernel
      */
 
-    EFI_LOADED_IMAGE *LoadedImage;
-    if (_EFI_ERROR(Status = uefi_call_wrapper(BS->HandleProtocol, 3,
-            ImageHandle, &LoadedImageProtocol, (void**)&LoadedImage)))
-        EXIT_STATUS(Status, L"handle LoadedImageProtocol");
-    EFI_FILE_HANDLE RootDir;
-    if (!(RootDir = LibOpenRoot(LoadedImage->DeviceHandle)))
-        EXIT_STATUS(EFI_ABORTED, L"LibOpenRoot");
-    EFI_FILE_HANDLE File;
-    if (_EFI_ERROR(Status = uefi_call_wrapper(RootDir->Open, 5,
-            RootDir, &File, L"\\opsys", EFI_FILE_MODE_READ, 0)))
-        EXIT_STATUS(Status, L"RootDir->Open");
-
-    Elf64_Ehdr _ehdr, *ehdr = &_ehdr;
-    Elf64_Phdr *phdrs = NULL;
-    read_program_headers(File, ehdr, &phdrs);
-    load_elf_pages(File, ehdr, phdrs);
-    uefi_call_wrapper(File->Close, 1, File);
-    uefi_call_wrapper(RootDir->Close, 1, RootDir);
+    const Elf64_Ehdr *ehdr;
+    const Elf64_Phdr *phdrs;
+    load_kernel(&ehdr, &phdrs);
     print_program_headers(ehdr, phdrs);
+    uefi_call_wrapper(RootDir->Close, 1, RootDir);
+    RootDir = NULL;
 
     UINT64 NumEntries, MapKey, DescriptorSize;
     UINT32 DescriptorVersion;
@@ -72,40 +68,41 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
     return EFI_SUCCESS;
 }
 
-static void print_program_header(const Elf64_Phdr*);
+static void load_elf_pages(EFI_FILE_HANDLE, const Elf64_Ehdr*, Elf64_Phdr*);
 
+/* copy the kernel into memory. ehdr_out and phdrs_out will point to the
+ * fixed-up structures in the loaded image. */
 static void
-print_program_headers(const Elf64_Ehdr *ehdr, const Elf64_Phdr *phdrs)
+load_kernel(const Elf64_Ehdr **ehdr_out, const Elf64_Phdr **phdrs_out)
 {
-    if (!ehdr->e_phnum)
-        return;
-    Print(L"program headers:\n");
-    Print(L"%-8s %5s %8s %8s %8s %16s %8s %8s\n",
-        L"type", L"flags", L"offset", L"filesz", L"paddr", L"vaddr", L"memsz",
-        L"n pages");
-    for (Elf64_Half i = 0; i < ehdr->e_phnum; ++i)
-        print_program_header(&phdrs[i]);
-}
+    EFI_ASSERT(RootDir);
+    EFI_STATUS Status;
+    EFI_FILE_HANDLE File;
+    if (_EFI_ERROR(Status = uefi_call_wrapper(RootDir->Open, 5,
+            RootDir, &File, (CHAR16*)kernel_fname, EFI_FILE_MODE_READ, 0)))
+        EXIT_STATUS(Status, L"RootDir->Open");
+    Elf64_Ehdr _ehdr, *ehdr = &_ehdr;
+    Elf64_Phdr *phdrs;
+    read_program_headers(File, ehdr, &phdrs);
+    load_elf_pages(File, ehdr, phdrs);
+    uefi_call_wrapper(File->Close, 1, File);
 
-static void
-print_program_header(const Elf64_Phdr *phdr)
-{
-    if (phdr->p_type < PT_NUM)
-        Print(L"%-8s ", a2u(elf_segment_type_str[phdr->p_type]));
-    else if (PT_GNU_STACK <= phdr->p_type && phdr->p_type <= PT_GNU_RELRO)
-        Print(L"%-8s ",
-            a2u(elf_segment_type_str[PT_NUM + phdr->p_type - PT_GNU_STACK]));
-    else
-        Print(L"%-8x ", phdr->p_type);
+    /* fix up the corresponding headers in the loaded image */
+    Elf64_Phdr *first_phdr = &phdrs[0];
+    /* XXX: if this constraint is ever broken we'll just have to search for the
+     * phdr with p_offset 0. */
+    EFI_ASSERT(first_phdr->p_type == PT_LOAD && first_phdr->p_offset == 0);
+    *ehdr_out = (Elf64_Ehdr*)first_phdr->p_paddr;
+    *phdrs_out = (Elf64_Phdr*)(first_phdr->p_paddr + (*ehdr_out)->e_phoff);
 
-    Print(L"%c%c%c   %8lx %8lx %8lx %16lx %8lx %8lx\n",
-        phdr->p_flags & PF_R ? L'R' : L' ',
-        phdr->p_flags & PF_W ? L'W' : L' ',
-        phdr->p_flags & PF_X ? L'X' : L' ',
-        phdr->p_offset, phdr->p_filesz,
-        phdr->p_paddr,
-        phdr->p_vaddr, phdr->p_memsz,
-        NUM_PAGES(phdr->p_vaddr, phdr->p_memsz));
+    for (Elf64_Half i = 0; i < ehdr->e_phnum; ++i) {
+        Elf64_Phdr *phdr = &phdrs[i];
+        Elf64_Phdr *phdr_out = (Elf64_Phdr*)(&(*phdrs_out)[i]);
+        phdr_out->p_paddr = phdr->p_paddr;
+        phdr_out->p_vaddr = phdr->p_vaddr;
+    }
+
+    elf_free(phdrs);
 }
 
 /* allocate Loader(Code|Data) pages, read file into pages, then set p_paddr and
@@ -130,6 +127,7 @@ load_elf_pages(EFI_FILE_HANDLE File, const Elf64_Ehdr *ehdr, Elf64_Phdr *phdrs)
         elf_read(File, (void*)phdr->p_paddr, phdr->p_offset, phdr->p_filesz);
     }
 
+    /* set p_paddr for non-LOAD segments (e.g. DYNAMIC) */
     for (Elf64_Half i = 0; i < ehdr->e_phnum; ++i) {
         Elf64_Phdr *phdr = &phdrs[i];
         if (phdr->p_type == PT_LOAD)
@@ -151,6 +149,41 @@ load_elf_pages(EFI_FILE_HANDLE File, const Elf64_Ehdr *ehdr, Elf64_Phdr *phdrs)
             ? PAGE_OFFSET(phdr->p_vaddr) + PAGE_BASE(segment->p_paddr)
             : 0;
     }
+}
+
+static void print_program_header(const Elf64_Phdr*);
+
+static void
+print_program_headers(const Elf64_Ehdr *ehdr, const Elf64_Phdr *phdrs)
+{
+    if (!ehdr->e_phnum)
+        return;
+    Print(L"program headers:\n");
+    Print(L"%-8s %5s %8s %8s %8s %16s %8s %s\n",
+        L"type", L"flags", L"offset", L"filesz", L"vaddr", L"memsz", L"paddr",
+        L"n pages");
+    for (Elf64_Half i = 0; i < ehdr->e_phnum; ++i)
+        print_program_header(&phdrs[i]);
+}
+
+static void
+print_program_header(const Elf64_Phdr *phdr)
+{
+    if (phdr->p_type < PT_NUM)
+        Print(L"%-8s ", a2u(elf_segment_type_str[phdr->p_type]));
+    else if (PT_GNU_STACK <= phdr->p_type && phdr->p_type <= PT_GNU_RELRO)
+        Print(L"%-8s ",
+            a2u(elf_segment_type_str[PT_NUM + phdr->p_type - PT_GNU_STACK]));
+    else
+        Print(L"%-8x ", phdr->p_type);
+
+    Print(L"%c%c%c   %8lx %8lx %16lx %8lx %8lx %lu\n",
+        phdr->p_flags & PF_R ? L'R' : L' ',
+        phdr->p_flags & PF_W ? L'W' : L' ',
+        phdr->p_flags & PF_X ? L'X' : L' ',
+        phdr->p_offset, phdr->p_filesz,
+        phdr->p_vaddr, phdr->p_memsz,
+        phdr->p_paddr, NUM_PAGES(phdr->p_vaddr, phdr->p_memsz));
 }
 
 /* parse and complete filling out the memory map */

@@ -29,6 +29,8 @@ extern uint64_t ram_size;
 extern uint64_t paddr_max; /* maximum accessible physical page + 1 */
 extern uint64_t paddr_base; /* -1GB - paddr_max */
 
+typedef uint64_t page_table_entry_t[512];
+
 /* x86-64-system table 4-19 */
 enum page_table_entry_flags {
     PTE_P  = 1 << 0, /* present */
