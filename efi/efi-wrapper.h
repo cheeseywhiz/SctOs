@@ -61,7 +61,7 @@ static const CHAR16 *const efi_error_str[] = {
 };
 
 /* uefi AllocatePages related definitions page 162 */
-#define _MT_STR(name) [Efi ## name] = (L ## #name)
+#define _MT_STR(type) [Efi ## type] = (L ## #type)
 static const CHAR16 *const efi_memory_type_str[] = {
     _MT_STR(ReservedMemoryType),
     _MT_STR(LoaderCode),

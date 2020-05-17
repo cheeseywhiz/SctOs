@@ -136,7 +136,7 @@ $(BUILD_TEST)/introspect: $(addprefix $(BUILD_TEST)/, test/glibc-readelf.o \
 tags: $(SOURCES) $(shell find . -name "*.h" -not -path "./cross/*")
 	ctags --exclude=cross/\* --exclude=\*.json --exclude=Makefile -R .
 
-.PHONY: all kernel-tree efi-tree test-tree kernel efi tests clean qemu $(FORCE)
+.PHONY: all kernel-tree efi-tree test-tree kernel efi tests clean compile_commands.json qemu $(FORCE)
 
 all: tests kernel efi
 
@@ -163,6 +163,11 @@ clean:
 		rmdir $$f 1>/dev/null 2>&1 || true; \
 	done
 
+compile_commands.json:
+	make clean
+	$(RM) $@
+	bear make all -j5
+
 qemu: $(BUILD_OVMF_VARS) $(DISK)
 	qemu-system-x86_64 \
 		-drive if=pflash,format=raw,unit=0,file=$(OVMF_CODE),readonly=on \
@@ -172,4 +177,6 @@ qemu: $(BUILD_OVMF_VARS) $(DISK)
 		-nographic \
 		-serial mon:stdio \
 		-serial file:out.txt \
-		-cpu qemu64
+		-enable-kvm \
+		-cpu host \
+		-m 4G \
