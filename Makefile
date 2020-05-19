@@ -35,11 +35,6 @@ EFI_CFLAGS += -mno-red-zone -mno-avx -fshort-wchar -fno-strict-aliasing \
 ifneq ($(EFI_DEBUG),)
 EFI_CPPFLAGS += -D_EFI_DEBUG=$(EFI_DEBUG)
 EFI_CFLAGS += -O0 -ggdb3
-ifneq ($(EFI_POLL),)
-EFI_CPPFLAGS += -D_EFI_POLL=1
-else
-EFI_CPPFLAGS += -D_EFI_POLL=0
-endif
 endif
 EFI_CRT := $(HOME)/.local/lib/crt0-efi-x86_64.o
 EFI_LDSCRIPT := $(HOME)/.local/lib/elf_x86_64_efi.lds
@@ -64,9 +59,7 @@ QEMUFLAGS += \
 	-s \
 
 ifneq ($(EFI_DEBUG),)
-ifeq ($(EFI_POLL),)
 QEMUFLAGS += -S
-endif
 endif
 
 KERNEL_DIRS := lib src

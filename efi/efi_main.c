@@ -6,6 +6,7 @@
 #include "readelf.h"
 #include "elf.h"
 #include "util.h"
+#include "x86.h"
 #include "opsys/virtual-memory.h"
 
 static const CHAR16 *const kernel_fname = L"\\opsys";
@@ -28,14 +29,7 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
     if (_EFI_ERROR(Status = uefi_call_wrapper(BS->HandleProtocol, 3,
             ImageHandle, &LoadedImageProtocol, (void**)&LoadedImage)))
         EXIT_STATUS(Status, L"handle LoadedImageProtocol");
-
-#ifdef _EFI_DEBUG
-    if (_EFI_POLL) {
-        Print(L"ImageBase: 0x%lx\n", LoadedImage->ImageBase);
-        return EFI_SUCCESS;
-    }
-#endif
-
+    Print(L"ImageBase: 0x%lx\n", LoadedImage->ImageBase);
     if (!(RootDir = LibOpenRoot(LoadedImage->DeviceHandle)))
         EXIT_STATUS(EFI_ABORTED, L"LibOpenRoot");
 
@@ -45,8 +39,8 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
      * 3. prepare boot page tables with Loader segments identity mapped and
      *    kernel mapped to high half *
      * 4. acquire final memory map *
-     * 5. ExitBootServices
-     * 6. SetVirtualAddressMap
+     * 5. ExitBootServices *
+     * 6. SetVirtualAddressMap *
      * 7. enable paging with boot page tables
      * 8. finish preparation of kernel executable (e.g. do relocations, set
      *    load-time vars, clear bss, set relro pages to ro)
@@ -84,15 +78,21 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
     if (!(MemoryMap = LibMemoryMap(&NumEntries, &MapKey, &DescriptorSize,
                                    &DescriptorVersion)))
         EXIT_STATUS(EFI_ABORTED, L"LibMemoryMap");
-    Print(L"ExitBootServices: 0x%lx\n", BS->ExitBootServices);
+
+    /* 5. ExitBootServices */
+    if (_EFI_ERROR(Status = uefi_call_wrapper(BS->ExitBootServices, 2,
+            ImageHandle, MapKey)))
+        EXIT_STATUS(Status, L"ExitBootServices");
+
+    /* 6. SetVirtualAddressMap */
     UINT64 RamSize, PaddrMax;
     init_mmap(MemoryMap, &NumEntries, &RamSize, &PaddrMax);
-    print_memory_map(MemoryMap, NumEntries);
-    Print(L"RamSize:    0x%lx\n", RamSize);
-    Print(L"PaddrMax:   0x%lx\n", PaddrMax);
-    Print(L"MemoryMap:  0x%lx\n", MemoryMap);
+    if (_EFI_ERROR(Status = uefi_call_wrapper(RT->SetVirtualAddressMap, 4,
+            NumEntries * sizeof(*MemoryMap), DescriptorSize, DescriptorVersion,
+            MemoryMap)))
+        halt();
 
-    return EFI_SUCCESS;
+    halt();
 }
 
 static void load_elf_pages(EFI_FILE_HANDLE, const Elf64_Ehdr*, Elf64_Phdr*);
@@ -300,7 +300,8 @@ allocate_page(void)
     return Page;
 }
 
-/* parse and complete filling out the memory map */
+/* parse and complete filling out the memory map
+ * *post ExitBootServices* */
 static void
 init_mmap(EFI_MEMORY_DESCRIPTOR *MemoryMap, UINT64 *NumEntries, UINT64 *RamSize,
     UINT64 *PaddrMax)
@@ -365,7 +366,6 @@ init_mmap(EFI_MEMORY_DESCRIPTOR *MemoryMap, UINT64 *NumEntries, UINT64 *RamSize,
         }
     }
 
-    Print(L"UsableSize: 0x%lx\n", UsableSize);
     *NumEntries = NewLength;
 
     /* request virtual mapping for runtime segments */
