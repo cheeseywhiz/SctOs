@@ -28,6 +28,14 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
     if (_EFI_ERROR(Status = uefi_call_wrapper(BS->HandleProtocol, 3,
             ImageHandle, &LoadedImageProtocol, (void**)&LoadedImage)))
         EXIT_STATUS(Status, L"handle LoadedImageProtocol");
+
+#ifdef _EFI_DEBUG
+    if (_EFI_POLL) {
+        Print(L"ImageBase: 0x%lx\n", LoadedImage->ImageBase);
+        return EFI_SUCCESS;
+    }
+#endif
+
     if (!(RootDir = LibOpenRoot(LoadedImage->DeviceHandle)))
         EXIT_STATUS(EFI_ABORTED, L"LibOpenRoot");
 

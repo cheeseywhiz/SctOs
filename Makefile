@@ -32,6 +32,15 @@ EFI_CPPFLAGS += -I$(HOME)/.local/include/efi \
 EFI_CFLAGS += -mno-red-zone -mno-avx -fshort-wchar -fno-strict-aliasing \
 	-ffreestanding -fno-stack-protector -fno-merge-constants -fPIC \
 	-Wno-write-strings -Wno-redundant-decls -Wno-strict-prototypes
+ifneq ($(EFI_DEBUG),)
+EFI_CPPFLAGS += -D_EFI_DEBUG=$(EFI_DEBUG)
+EFI_CFLAGS += -O0 -ggdb3
+ifneq ($(EFI_POLL),)
+EFI_CPPFLAGS += -D_EFI_POLL=1
+else
+EFI_CPPFLAGS += -D_EFI_POLL=0
+endif
+endif
 EFI_CRT := $(HOME)/.local/lib/crt0-efi-x86_64.o
 EFI_LDSCRIPT := $(HOME)/.local/lib/elf_x86_64_efi.lds
 EFI_LDFLAGS += -nostdlib -shared -T $(EFI_LDSCRIPT) -L$(HOME)/.local/lib \
@@ -40,6 +49,25 @@ EFI_LDFLAGS += -nostdlib -shared -T $(EFI_LDSCRIPT) -L$(HOME)/.local/lib \
 EFI_LDLIBS := -lefi -lgnuefi -lgcc
 TEST_CFLAGS += -O0 -ggdb
 TEST_LDFLAGS += -Wl,--hash-style=sysv
+
+QEMUFLAGS += \
+	-drive if=pflash,format=raw,unit=0,file=$(OVMF_CODE),readonly=on \
+	-drive if=pflash,format=raw,unit=1,file=$(BUILD_OVMF_VARS) \
+	-drive file=$(DISK),if=ide,format=raw \
+	-serial file:out.txt \
+	-net none \
+	-enable-kvm \
+	-cpu host \
+	-m 1G \
+	-nographic \
+	-serial mon:stdio \
+	-s \
+
+ifneq ($(EFI_DEBUG),)
+ifeq ($(EFI_POLL),)
+QEMUFLAGS += -S
+endif
+endif
 
 KERNEL_DIRS := lib src
 KERNEL_ASM_SOURCES := $(shell find $(KERNEL_DIRS) -name "*.s")
@@ -56,9 +84,11 @@ EFI_SOURCES := $(shell find efi -name "*.c") lib/readelf.c
 EFI_OBJECTS := $(addprefix $(BUILD_EFI)/, $(EFI_SOURCES:%.c=%.o))
 EFI_SO := $(BUILD_EFI)/opsys-loader.so
 EFI_EXEC := $(BUILD_EFI)/opsys-loader.efi
+EFI_DEBUG_EXEC := $(BUILD_EFI)/opsys-loader-debug.efi
+EFI_EXECS := $(EFI_SO) $(EFI_EXEC) $(EFI_DEBUG_EXEC)
 EFI_TREE := $(shell find efi -type d) lib
 EFI_TREE := $(BUILD_EFI) $(addprefix $(BUILD_EFI)/, $(EFI_TREE))
-$(EFI_EXEC) $(EFI_SO) $(EFI_OBJECTS): | efi-tree
+$(EFI_EXECS) $(EFI_OBJECTS): | efi-tree
 $(BUILD_OVMF_VARS) $(DISK): | efi-tree
 
 TEST_DIRS := test
@@ -91,9 +121,12 @@ $(BUILD_KERNEL)/%.o: %.c
 	$(KERNEL_CC) $(CPPFLAGS) $(CFLAGS) $(KERNEL_CFLAGS) -c -o $@ $<
 
 $(EFI_EXEC): $(EFI_SO)
-	objcopy -j .text -j .sdata -j .data -j .dynamic -j .dynsym -j .rel \
-		-j .rela -j .rel.* -j .rela.* -j .rel* -j .rela* -j .reloc \
+	objcopy -j .text -j .sdata -j .data -j .dynamic -j .dynsym -j .rel* \
 		--target=efi-app-x86_64 $< $@
+
+$(EFI_DEBUG_EXEC): $(EFI_SO)
+	objcopy -j .text -j .sdata -j .data -j .dynamic -j .dynsym -j .rel* \
+		-j .debug* --target=efi-app-x86_64 $< $@
 
 $(EFI_SO): $(EFI_CRT) $(EFI_LDSCRIPT) $(EFI_OBJECTS)
 	$(CC) $(EFI_LDFLAGS) -o $@ $(EFI_CRT) $(EFI_OBJECTS) $(EFI_LDLIBS)
@@ -136,7 +169,8 @@ $(BUILD_TEST)/introspect: $(addprefix $(BUILD_TEST)/, test/glibc-readelf.o \
 tags: $(SOURCES) $(shell find . -name "*.h" -not -path "./cross/*")
 	ctags --exclude=cross/\* --exclude=\*.json --exclude=Makefile -R .
 
-.PHONY: all kernel-tree efi-tree test-tree kernel efi tests clean compile_commands.json qemu $(FORCE)
+.PHONY: all kernel-tree efi-tree test-tree kernel efi tests clean \
+	compile_commands.json qemu print-efi-execs $(FORCE)
 
 all: tests kernel efi
 
@@ -151,13 +185,17 @@ test-tree:
 
 kernel: $(KERNEL)
 
+ifneq ($(EFI_DEBUG),)
+efi: $(EFI_EXEC) $(EFI_DEBUG_EXEC)
+else
 efi: $(EFI_EXEC)
+endif
 
 tests: $(TEST_EXECS)
 
 # remove files, then do a post-order removal of the build tree
 clean:
-	@-$(RM) $(OBJECTS) $(DEPS) $(KERNEL) $(EFI_SO) $(EFI_EXEC) $(TEST_EXECS) \
+	@-$(RM) $(OBJECTS) $(DEPS) $(KERNEL) $(EFI_EXECS) $(TEST_EXECS) \
 		$(BUILD_OVMF_VARS) $(DISK) vgcore.* perf.*
 	@for f in $(shell echo $(BUILD_TREE) | tr ' ' '\n' | sort -r); do \
 		rmdir $$f 1>/dev/null 2>&1 || true; \
@@ -168,15 +206,10 @@ compile_commands.json:
 	$(RM) $@
 	bear make all -j5
 
-qemu: $(BUILD_OVMF_VARS) $(DISK)
-	qemu-system-x86_64 \
-		-drive if=pflash,format=raw,unit=0,file=$(OVMF_CODE),readonly=on \
-		-drive if=pflash,format=raw,unit=1,file=$(BUILD_OVMF_VARS) \
-		-drive file=$(DISK),if=ide,format=raw \
-		-net none \
-		-nographic \
-		-serial mon:stdio \
-		-serial file:out.txt \
-		-enable-kvm \
-		-cpu host \
-		-m 6G \
+qemu: $(BUILD_OVMF_VARS) $(DISK) efi
+	qemu-system-x86_64 $(QEMUFLAGS)
+
+# pass this information to gdb.py
+print-efi-execs:
+	@echo $(EFI_EXEC)
+	@echo $(EFI_DEBUG_EXEC)

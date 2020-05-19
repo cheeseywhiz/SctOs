@@ -11,3 +11,4 @@ perf.*
 introspect
 tags
 out.txt
+__pycache__
