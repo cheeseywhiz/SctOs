@@ -14,7 +14,6 @@ DISK := $(BUILD_EFI)/disk.img
 disk: $(DISK)
 
 KERNEL_CC := ./cross/bin/x86_64-elf-gcc
-KERNEL_AS := ./cross/bin/x86_64-elf-as
 
 CFLAGS += -std=gnu11 -O2 -fdiagnostics-color=always
 CPPFLAGS += -iquote include -MMD -MP
@@ -23,8 +22,13 @@ CFLAGS += -Werror -Wall -Wextra -pedantic -Wshadow -Wpointer-arith \
 	-Wredundant-decls -Wnested-externs -Winline -Wno-long-long -Wconversion \
 	-Wstrict-prototypes
 KERNEL_CFLAGS += -ffreestanding -fPIE
+ifneq ($(KERNEL_DEBUG),)
+KERNEL_CPPFLAGS += -D_KERNEL_DEBUG=$(KERNEL_DEBUG)
+KERNEL_CFLAGS += -O0 -g3
+endif
 KERNEL_LDFLAGS += -nostdlib -static-pie -Wl,-static,-pie,--no-dynamic-linker \
-	-Wl,-z,separate-code,-z,max-page-size=0x1000,-z,noexecstack,-z,relro
+	-Wl,-z,separate-code,-z,max-page-size=0x1000,-z,noexecstack,-z,relro \
+	-Wl,-e,main
 KERNEL_LDLIBS := -lgcc
 EFI_CPPFLAGS += -I$(HOME)/.local/include/efi \
 	-I$(HOME)/.local/include/efi/x86_64 -DGNU_EFI_USE_MS_ABI
@@ -115,10 +119,11 @@ $(KERNEL): $(KERNEL_LDSCRIPT) $(KERNEL_OBJECTS)
 		$(KERNEL_OBJECTS) $(KERNEL_LDLIBS)
 
 $(BUILD_KERNEL)/%.o: %.S
-	$(KERNEL_CC) $(CPPFLAGS) -c -o $@ $<
+	$(KERNEL_CC) $(CPPFLAGS) $(KERNEL_CPPFLAGS) -c -o $@ $<
 
 $(BUILD_KERNEL)/%.o: %.c
-	$(KERNEL_CC) $(CPPFLAGS) $(CFLAGS) $(KERNEL_CFLAGS) -c -o $@ $<
+	$(KERNEL_CC) $(CPPFLAGS) $(KERNEL_CPPFLAGS) $(CFLAGS) $(KERNEL_CFLAGS) \
+		-c -o $@ $<
 
 $(EFI_EXEC): $(EFI_SO)
 	objcopy -j .text -j .sdata -j .data -j .dynamic -j .dynsym -j .rel* \
@@ -173,7 +178,7 @@ tags: $(SOURCES) $(shell find . -name "*.h" -not -path "./cross/*")
 	ctags --exclude=cross/\* --exclude=\*.json --exclude=Makefile -R .
 
 .PHONY: all kernel-tree efi-tree test-tree kernel efi tests clean \
-	compile_commands.json qemu print-efi-execs $(FORCE)
+	compile_commands.json qemu print-debug-execs $(FORCE)
 
 all: tests kernel efi
 
@@ -213,6 +218,7 @@ qemu: $(BUILD_OVMF_VARS) $(DISK) efi
 	qemu-system-x86_64 $(QEMUFLAGS)
 
 # pass this information to gdb.py
-print-efi-execs:
+print-debug-execs:
 	@echo $(EFI_EXEC)
 	@echo $(EFI_DEBUG_EXEC)
+	@echo $(KERNEL)

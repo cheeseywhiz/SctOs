@@ -140,13 +140,9 @@ read_msr(uint32_t which_msr)
 {
     uint32_t eax, edx;
     __asm volatile(
-        "mov %[which_msr], %%ecx\n"
-        "rdmsr\n"
-        "mov %%eax, %[eax]\n"
-        "mov %%edx, %[edx]"
-        : [eax] "=r"(eax), [edx] "=r"(edx)
-        : [which_msr] "r"(which_msr)
-        : "ecx", "eax", "edx");
+        "rdmsr"
+        : "=a"(eax), "=d"(edx)
+        : "c"(which_msr));
     return ((uint64_t)edx << 32) | eax;
 }
 

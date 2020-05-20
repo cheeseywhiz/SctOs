@@ -5,7 +5,7 @@
 #endif
 
 #ifdef __ASSEMBLER__
-#define PAGE_SIZE 4096
+#define PAGE_SIZE 0x1000
 #else
 #define PAGE_SIZE 0x1000ULL
 /* the base address of the page containing addr */

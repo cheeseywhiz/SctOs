@@ -6,4 +6,4 @@
 #define __noreturn __attribute__((noreturn))
 #define IN_RANGE(base, size, x) ((base) <= (x) && (x) < (base) + (size))
 #define HANG() do {} while (1)
-
+void __builtin_unreachable(void);

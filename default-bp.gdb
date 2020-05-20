@@ -1,8 +1,10 @@
 # save breakpoints bp.gdb
-hbreak debug_entry
+hbreak efi_debug_entry
   commands
     finish
   end
+disable $bpnum
+hbreak main
 hbreak halt
   commands
     where

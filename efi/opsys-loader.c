@@ -1,4 +1,4 @@
-/* this file loads the kernel executable into memory and runs it */
+/* this file loads and executes the kernel executable */
 #include <efi.h>
 #include <efilib.h>
 #include <stdint.h>
@@ -12,7 +12,7 @@
 static const CHAR16 *const kernel_fname = L"\\opsys";
 static EFI_FILE_HANDLE RootDir = NULL;
 
-static void debug_entry(EFI_LOADED_IMAGE*);
+static void efi_debug_entry(EFI_LOADED_IMAGE*);
 static void print_cr0(void);
 static void print_cr4(void);
 static void print_efer(void);
@@ -20,7 +20,7 @@ static void print_efer(void);
 /* gdb.py sets this function as a breakpoint. then, set a command to run
  * "finish" upon reaching this function. */
 static void
-debug_entry(EFI_LOADED_IMAGE *LoadedImage)
+efi_debug_entry(EFI_LOADED_IMAGE *LoadedImage)
 {
     Print(L"ImageBase: 0x%lx\n", LoadedImage->ImageBase);
     print_cr0();
@@ -53,23 +53,23 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
     if (_EFI_ERROR(Status = uefi_call_wrapper(BS->HandleProtocol, 3,
             ImageHandle, &LoadedImageProtocol, (void**)&LoadedImage)))
         EXIT_STATUS(Status, L"handle LoadedImageProtocol");
-    debug_entry(LoadedImage);
+    efi_debug_entry(LoadedImage);
     if (!(RootDir = LibOpenRoot(LoadedImage->DeviceHandle)))
         EXIT_STATUS(EFI_ABORTED, L"LibOpenRoot");
 
-    /* TODO: bootloader sequence (*completed)
-     * 1. allocate new stack *
-     * 2. acquire preliminary memory map *
-     * 3. load kernel executable into physical memory *
+    /* 
+     * bootloader sequence
+     * 1. allocate new stack
+     * 2. acquire preliminary memory map
+     * 3. load kernel executable into physical memory
      * 4. prepare boot page tables with Loader segments identity mapped and
-     *    kernel mapped to high half *
-     * 5. acquire final memory map *
-     * 6. ExitBootServices *
-     * 7. SetVirtualAddressMap *
-     * 8. set up new stack *
-     * 9. enable paging with boot page tables *
-     * 10. finish preparation of kernel executable (e.g. do relocations, set
-     *     load-time vars, clear bss, set relro pages to ro)
+     *    kernel mapped to high half
+     * 5. acquire final memory map
+     * 6. ExitBootServices
+     * 7. SetVirtualAddressMap
+     * 8. set up new stack
+     * 9. enable paging with boot page tables
+     * 10. finish preparation of kernel executable
      * 11. jump to kernel
      */
 
@@ -122,7 +122,7 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
     /* 8. set up new stack */
     setup_new_stack(boot_page_table, efi_main2, new_stack);
     /* control transfers almost directly to efi_main2 with new stack */
-    halt(); /* unreachable */
+    __builtin_unreachable();
 }
 
 static void
@@ -131,7 +131,20 @@ efi_main2(page_table_t *boot_page_table)
     /* 9. enable paging with boot page tables */
     set_cr3(boot_page_table);
 
-    halt();
+    /* 10. finish preparation of kernel executable */
+    /* XXX:
+     * need to implement these as they become needed
+     * - relocations,
+     * - set load-time synbols
+     * - clear bss
+     * - set relro pages to ro
+     */
+    const Elf64_Ehdr *ehdr = (void*)KERNEL_BASE;
+
+    /* 11. jump to kernel */
+    void (*main)(void) = (void (*)(void))ehdr->e_entry;
+    main();
+    __builtin_unreachable();
 }
 
 #define PRINT_CR0(flag) \
@@ -231,6 +244,7 @@ load_kernel(const Elf64_Ehdr **ehdr_out, const Elf64_Phdr **phdrs_out)
     EFI_ASSERT(first_phdr->p_type == PT_LOAD && first_phdr->p_offset == 0);
     *ehdr_out = (Elf64_Ehdr*)first_phdr->p_paddr;
     *phdrs_out = (Elf64_Phdr*)(first_phdr->p_paddr + (*ehdr_out)->e_phoff);
+    (*(Elf64_Ehdr**)ehdr_out)->e_entry += KERNEL_BASE;
 
     for (Elf64_Half i = 0; i < ehdr->e_phnum; ++i) {
         Elf64_Phdr *phdr = &phdrs[i];
