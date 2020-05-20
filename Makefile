@@ -17,12 +17,11 @@ KERNEL_CC := ./cross/bin/x86_64-elf-gcc
 KERNEL_AS := ./cross/bin/x86_64-elf-as
 
 CFLAGS += -std=gnu11 -O2 -fdiagnostics-color=always
-CPPFLAGS += -iquote include
+CPPFLAGS += -iquote include -MMD -MP
 CFLAGS += -Werror -Wall -Wextra -pedantic -Wshadow -Wpointer-arith \
 	-Wcast-align -Wwrite-strings -Wmissing-prototypes -Wmissing-declarations \
 	-Wredundant-decls -Wnested-externs -Winline -Wno-long-long -Wconversion \
 	-Wstrict-prototypes
-OBJECT_CFLAGS += -MMD -MP
 KERNEL_CFLAGS += -ffreestanding -fPIE
 KERNEL_LDFLAGS += -nostdlib -static-pie -Wl,-static,-pie,--no-dynamic-linker \
 	-Wl,-z,separate-code,-z,max-page-size=0x1000,-z,noexecstack,-z,relro
@@ -34,7 +33,8 @@ EFI_CFLAGS += -mno-red-zone -mno-avx -fshort-wchar -fno-strict-aliasing \
 	-Wno-write-strings -Wno-redundant-decls -Wno-strict-prototypes
 ifneq ($(EFI_DEBUG),)
 EFI_CPPFLAGS += -D_EFI_DEBUG=$(EFI_DEBUG)
-EFI_CFLAGS += -O0 -ggdb3
+EFI_CFLAGS += -O0 -g3
+EFI_ASFLAGS += -g
 endif
 EFI_CRT := $(HOME)/.local/lib/crt0-efi-x86_64.o
 EFI_LDSCRIPT := $(HOME)/.local/lib/elf_x86_64_efi.lds
@@ -57,24 +57,32 @@ QEMUFLAGS += \
 	-nographic \
 	-serial mon:stdio \
 	-s \
+	-no-reboot \
 
 ifneq ($(EFI_DEBUG),)
 QEMUFLAGS += -S
 endif
 
 KERNEL_DIRS := lib src
-KERNEL_ASM_SOURCES := $(shell find $(KERNEL_DIRS) -name "*.s")
+KERNEL_ASM_SOURCES := $(shell find $(KERNEL_DIRS) -name "*.S")
 KERNEL_C_SOURCES := $(shell find $(KERNEL_DIRS) -name "*.c")
 KERNEL_SOURCES := $(KERNEL_ASM_SOURCES) $(KERNEL_C_SOURCES)
-KERNEL_OBJECTS := $(KERNEL_ASM_SOURCES:%.s=%.o) $(KERNEL_C_SOURCES:%.c=%.o)
+KERNEL_OBJECTS := $(KERNEL_ASM_SOURCES:%.S=%.o) $(KERNEL_C_SOURCES:%.c=%.o)
 KERNEL_OBJECTS := $(addprefix $(BUILD_KERNEL)/, $(KERNEL_OBJECTS))
+KERNEL_DEPS := $(KERNEL_ASM_SOURCES:%.S=%.d) $(KERNEL_C_SOURCES:%.c=%.d)
+KERNEL_DEPS := $(addprefix $(BUILD_KERNEL)/, $(KERNEL_DEPS))
 KERNEL := $(BUILD_KERNEL)/opsys
 KERNEL_TREE := $(shell find $(KERNEL_DIRS) -type d)
 KERNEL_TREE := $(BUILD_KERNEL) $(addprefix $(BUILD_KERNEL)/, $(KERNEL_TREE))
 $(KERNEL) $(KERNEL_OBJECTS): | kernel-tree
 
-EFI_SOURCES := $(shell find efi -name "*.c") lib/readelf.c
-EFI_OBJECTS := $(addprefix $(BUILD_EFI)/, $(EFI_SOURCES:%.c=%.o))
+EFI_C_SOURCES := $(shell find efi -name "*.c") lib/readelf.c
+EFI_ASM_SOURCES := $(shell find efi -name "*.S")
+EFI_SOURCES := $(EFI_C_SOURCES) $(EFI_ASM_SOURCES)
+EFI_OBJECTS := $(EFI_C_SOURCES:%.c=%.o) $(EFI_ASM_SOURCES:%.S=%.o)
+EFI_OBJECTS := $(addprefix $(BUILD_EFI)/, $(EFI_OBJECTS))
+EFI_DEPS := $(EFI_C_SOURCES:%.c=%.d) $(EFI_ASM_SOURCES:%.S=%.d)
+EFI_DEPS := $(addprefix $(BUILD_EFI)/, $(EFI_DEPS))
 EFI_SO := $(BUILD_EFI)/opsys-loader.so
 EFI_EXEC := $(BUILD_EFI)/opsys-loader.efi
 EFI_DEBUG_EXEC := $(BUILD_EFI)/opsys-loader-debug.efi
@@ -87,6 +95,7 @@ $(BUILD_OVMF_VARS) $(DISK): | efi-tree
 TEST_DIRS := test
 TEST_SOURCES := $(shell find $(TEST_DIRS) -name "*.c")
 TEST_OBJECTS := $(addprefix $(BUILD_TEST)/, $(TEST_SOURCES:%.c=%.o))
+TEST_DEPS := $(addprefix $(BUILD_TEST)/, $(TEST_SOURCES:%.c=%.d))
 TEST_EXECS := $(addprefix $(BUILD_TEST)/, readelf small-exec introspect)
 TEST_TREE := $(shell find $(TEST_DIRS) -type d)
 TEST_TREE := $(BUILD_TEST) $(addprefix $(BUILD_TEST)/, $(TEST_TREE))
@@ -95,9 +104,7 @@ $(TEST_EXECS) $(TEST_OBJECTS): | test-tree
 SOURCES := $(KERNEL_SOURCES) $(EFI_SOURCES) $(TEST_SOURCES)
 OBJECTS := $(KERNEL_OBJECTS) $(EFI_OBJECTS) $(TEST_OBJECTS)
 BUILD_TREE += $(KERNEL_TREE) $(EFI_TREE) $(TEST_TREE)
-DEPS := $(OBJECTS:%.o=%.d)
-
-$(OBJECTS): CFLAGS += $(OBJECT_CFLAGS)
+DEPS := $(KERNEL_DEPS) $(EFI_DEPS) $(TEST_DEPS)
 
 .SUFFIXES:
 
@@ -107,8 +114,8 @@ $(KERNEL): $(KERNEL_LDSCRIPT) $(KERNEL_OBJECTS)
 	$(KERNEL_CC) $(CFLAGS) $(KERNEL_CFLAGS) $(KERNEL_LDFLAGS) -o $@ \
 		$(KERNEL_OBJECTS) $(KERNEL_LDLIBS)
 
-$(BUILD_KERNEL)/%.o: %.s
-	$(KERNEL_AS) -o $@ $<
+$(BUILD_KERNEL)/%.o: %.S
+	$(KERNEL_CC) $(CPPFLAGS) -c -o $@ $<
 
 $(BUILD_KERNEL)/%.o: %.c
 	$(KERNEL_CC) $(CPPFLAGS) $(CFLAGS) $(KERNEL_CFLAGS) -c -o $@ $<
@@ -126,6 +133,9 @@ $(EFI_SO): $(EFI_CRT) $(EFI_LDSCRIPT) $(EFI_OBJECTS)
 
 $(BUILD_EFI)/%.o: %.c
 	$(CC) $(CPPFLAGS) $(EFI_CPPFLAGS) $(CFLAGS) $(EFI_CFLAGS) -c -o $@ $<
+
+$(BUILD_EFI)/%.o: %.S
+	$(CC) $(CPPFLAGS) $(EFI_CPPFLAGS) $(EFI_ASFLAGS) -c -o $@ $<
 
 $(BUILD_OVMF_VARS): $(OVMF_VARS)
 	install -m 644 $< $@

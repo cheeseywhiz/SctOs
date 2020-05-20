@@ -12,14 +12,38 @@
 static const CHAR16 *const kernel_fname = L"\\opsys";
 static EFI_FILE_HANDLE RootDir = NULL;
 
+static void debug_entry(EFI_LOADED_IMAGE*);
+static void print_cr0(void);
+static void print_cr4(void);
+static void print_efer(void);
+
+/* gdb.py sets this function as a breakpoint. then, set a command to run
+ * "finish" upon reaching this function. */
+static void
+debug_entry(EFI_LOADED_IMAGE *LoadedImage)
+{
+    Print(L"ImageBase: 0x%lx\n", LoadedImage->ImageBase);
+    print_cr0();
+    page_table_t *cr3 = get_cr3();
+    Print(L"cr3: 0x%lx\n", cr3);
+    print_cr4();
+    print_efer();
+}
+
 void* memset(void*, int, size_t);
 static void load_kernel(const Elf64_Ehdr**, const Elf64_Phdr**);
+static void print_program_headers(const Elf64_Ehdr*, const Elf64_Phdr*);
 static page_table_t*  prepare_boot_page_tables(
     EFI_MEMORY_DESCRIPTOR*, UINT64, const Elf64_Ehdr*, const Elf64_Phdr*);
-static void print_program_headers(const Elf64_Ehdr*, const Elf64_Phdr*);
+static UINT64 allocate_page(void);
+typedef void efi_main2_t(page_table_t*);
+static __noreturn efi_main2_t efi_main2;
+extern void setup_new_stack(page_table_t*, efi_main2_t, UINT64);
 static void init_mmap(EFI_MEMORY_DESCRIPTOR*, UINT64*, UINT64*, UINT64*);
 static void print_memory_map(EFI_MEMORY_DESCRIPTOR*, UINT64);
 
+/* UEFI firmware calls efi_main in long mode with 4-level paging enabled (with
+ * write protect) with an identity mapping */
 EFI_STATUS
 efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
 {
@@ -29,25 +53,30 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
     if (_EFI_ERROR(Status = uefi_call_wrapper(BS->HandleProtocol, 3,
             ImageHandle, &LoadedImageProtocol, (void**)&LoadedImage)))
         EXIT_STATUS(Status, L"handle LoadedImageProtocol");
-    Print(L"ImageBase: 0x%lx\n", LoadedImage->ImageBase);
+    debug_entry(LoadedImage);
     if (!(RootDir = LibOpenRoot(LoadedImage->DeviceHandle)))
         EXIT_STATUS(EFI_ABORTED, L"LibOpenRoot");
 
     /* TODO: bootloader sequence (*completed)
-     * 1. acquire preliminary memory map *
-     * 2. load kernel executable into physical memory *
-     * 3. prepare boot page tables with Loader segments identity mapped and
+     * 1. allocate new stack *
+     * 2. acquire preliminary memory map *
+     * 3. load kernel executable into physical memory *
+     * 4. prepare boot page tables with Loader segments identity mapped and
      *    kernel mapped to high half *
-     * 4. acquire final memory map *
-     * 5. ExitBootServices *
-     * 6. SetVirtualAddressMap *
-     * 7. enable paging with boot page tables
-     * 8. finish preparation of kernel executable (e.g. do relocations, set
-     *    load-time vars, clear bss, set relro pages to ro)
-     * 9. jump to kernel
+     * 5. acquire final memory map *
+     * 6. ExitBootServices *
+     * 7. SetVirtualAddressMap *
+     * 8. set up new stack *
+     * 9. enable paging with boot page tables *
+     * 10. finish preparation of kernel executable (e.g. do relocations, set
+     *     load-time vars, clear bss, set relro pages to ro)
+     * 11. jump to kernel
      */
 
-    /* 1. acquire preliminary memory map */
+    /* 1. allocate new stack */
+    UINT64 new_stack = allocate_page();
+
+    /* 2. acquire preliminary memory map */
     UINT64 NumEntries, MapKey, DescriptorSize;
     UINT32 DescriptorVersion;
     EFI_MEMORY_DESCRIPTOR *MemoryMap;
@@ -59,7 +88,7 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
     EFI_ASSERT(DescriptorSize == sizeof(*MemoryMap));
     print_memory_map(MemoryMap, NumEntries);
 
-    /* 2. load kernel executable into physical memory */
+    /* 3. load kernel executable into physical memory */
     const Elf64_Ehdr *ehdr;
     const Elf64_Phdr *phdrs;
     load_kernel(&ehdr, &phdrs);
@@ -67,24 +96,22 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
     uefi_call_wrapper(RootDir->Close, 1, RootDir);
     RootDir = NULL;
 
-    /* 3. prepare boot page tables */
-    /* commented out because we don't use the boot_page_table yet
+    /* 4. prepare boot page tables */
     page_table_t *boot_page_table =
-    */
         prepare_boot_page_tables(MemoryMap, NumEntries, ehdr, phdrs);
     FreePool(MemoryMap);
 
-    /* 4. acquire final memory map */
+    /* 5. acquire final memory map */
     if (!(MemoryMap = LibMemoryMap(&NumEntries, &MapKey, &DescriptorSize,
                                    &DescriptorVersion)))
         EXIT_STATUS(EFI_ABORTED, L"LibMemoryMap");
 
-    /* 5. ExitBootServices */
+    /* 6. ExitBootServices */
     if (_EFI_ERROR(Status = uefi_call_wrapper(BS->ExitBootServices, 2,
             ImageHandle, MapKey)))
         EXIT_STATUS(Status, L"ExitBootServices");
 
-    /* 6. SetVirtualAddressMap */
+    /* 7. SetVirtualAddressMap */
     UINT64 RamSize, PaddrMax;
     init_mmap(MemoryMap, &NumEntries, &RamSize, &PaddrMax);
     if (_EFI_ERROR(Status = uefi_call_wrapper(RT->SetVirtualAddressMap, 4,
@@ -92,7 +119,90 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
             MemoryMap)))
         halt();
 
+    /* 8. set up new stack */
+    setup_new_stack(boot_page_table, efi_main2, new_stack);
+    /* control transfers almost directly to efi_main2 with new stack */
+    halt(); /* unreachable */
+}
+
+static void
+efi_main2(page_table_t *boot_page_table)
+{
+    /* 9. enable paging with boot page tables */
+    set_cr3(boot_page_table);
+
     halt();
+}
+
+#define PRINT_CR0(flag) \
+    if (cr0 & CR0_ ## flag) \
+        Print(L"%s ", (L ## #flag))
+
+static void
+print_cr0(void)
+{
+    uint64_t cr0 = get_cr0();
+    Print(L"cr0: ");
+    PRINT_CR0(PE);
+    PRINT_CR0(MP);
+    PRINT_CR0(EM);
+    PRINT_CR0(TS);
+    PRINT_CR0(ET);
+    PRINT_CR0(NE);
+    PRINT_CR0(WP);
+    PRINT_CR0(AM);
+    PRINT_CR0(NW);
+    PRINT_CR0(CD);
+    PRINT_CR0(PG);
+    Print(L"\n");
+}
+
+#define PRINT_CR4(flag) \
+    if (cr4 & CR4_ ## flag) \
+        Print(L"%s ", (L ## #flag))
+
+static void
+print_cr4(void)
+{
+    uint64_t cr4 = get_cr4();
+    Print(L"cr4: ");
+    PRINT_CR4(VME);
+    PRINT_CR4(PVI);
+    PRINT_CR4(TSD);
+    PRINT_CR4(DE);
+    PRINT_CR4(PSE);
+    PRINT_CR4(PAE);
+    PRINT_CR4(MCE);
+    PRINT_CR4(PGE);
+    PRINT_CR4(PCE);
+    PRINT_CR4(OSFXSR);
+    PRINT_CR4(OSXMMEXCPT);
+    PRINT_CR4(UMIP);
+    PRINT_CR4(VMXE);
+    PRINT_CR4(SMXE);
+    PRINT_CR4(FSGSBASE);
+    PRINT_CR4(PCIDE);
+    PRINT_CR4(OSXSAVE);
+    PRINT_CR4(SMEP);
+    PRINT_CR4(SMAP);
+    PRINT_CR4(PKE);
+    Print(L"\n");
+}
+
+#define PRINT_EFER(flag) \
+    if (efer & EFER_ ## flag) \
+        Print(L"%s ", (L ## #flag))
+
+static void
+print_efer(void)
+{
+    uint64_t efer = read_msr(IA32_EFER);
+    Print(L"ia32_efer: ");
+    PRINT_EFER(SYSCALL);
+    PRINT_EFER(LME);
+    PRINT_EFER(LMA);
+    PRINT_EFER(NXE);
+    Print(L"\n");
 }
 
 static void load_elf_pages(EFI_FILE_HANDLE, const Elf64_Ehdr*, Elf64_Phdr*);
@@ -214,7 +324,6 @@ print_program_header(const Elf64_Phdr *phdr)
 }
 
 static void map_page(page_table_t*, UINT64, UINT64, UINT64);
-static UINT64 allocate_page(void);
 
 /* prepare boot page tables with Loader segments identity mapped and kernel
  * mapped to high half */
@@ -232,8 +341,7 @@ prepare_boot_page_tables(EFI_MEMORY_DESCRIPTOR *MemoryMap, UINT64 NumEntries,
 
         for (UINT64 j = 0; j < Memory->NumberOfPages; ++j) {
             UINT64 Page = Memory->PhysicalStart + PAGE_SIZE * j;
-            UINT64 Flags = PTE_US;
-            Flags |= PTE_US;
+            UINT64 Flags = 0;
             if (Memory->Type == EfiLoaderData)
                 Flags |= PTE_RW;
             map_page(boot_page_table, Page, Page, Flags);
@@ -250,7 +358,7 @@ prepare_boot_page_tables(EFI_MEMORY_DESCRIPTOR *MemoryMap, UINT64 NumEntries,
         for (Elf64_Xword j = 0; j < num_pages; ++j) {
             UINT64 PPage = PAGE_BASE(phdr->p_paddr) + PAGE_SIZE * j;
             UINT64 VPage = PAGE_BASE(phdr->p_vaddr) + PAGE_SIZE * j;
-            UINT64 Flags = PTE_US;
+            UINT64 Flags = 0;
             if (phdr->p_flags & PF_W)
                 Flags |= PTE_RW;
             map_page(boot_page_table, PPage, VPage, Flags);
@@ -268,17 +376,17 @@ map_page(page_table_t *boot_page_table, UINT64 PPage, UINT64 VPage,
     /* x86-64-system figure 4-8 */
     pte_t *pml4e = &(*boot_page_table)[PAGE_LEVEL_INDEX(VPage, 4)];
     if (!(*pml4e & PTE_P))
-        *pml4e = allocate_page() | PTE_P | PTE_RW | PTE_US;
+        *pml4e = allocate_page() | PTE_P | PTE_RW;
 
     page_table_t *pade_dir_ptr_table = (page_table_t*)(*pml4e & PTE_ADDR_MASK);
     pte_t *pdpte = &(*pade_dir_ptr_table)[PAGE_LEVEL_INDEX(VPage, 3)];
     if (!(*pdpte & PTE_P))
-        *pdpte = allocate_page() | PTE_P | PTE_RW | PTE_US;
+        *pdpte = allocate_page() | PTE_P | PTE_RW;
 
     page_table_t *page_directory = (page_table_t*)(*pdpte & PTE_ADDR_MASK);
     pte_t *pde = &(*page_directory)[PAGE_LEVEL_INDEX(VPage, 2)];
     if (!(*pde & PTE_P))
-        *pde = allocate_page() | PTE_P | PTE_RW | PTE_US;
+        *pde = allocate_page() | PTE_P | PTE_RW;
 
     page_table_t *page_table = (page_table_t*)(*pde & PTE_ADDR_MASK);
     pte_t *pte = &(*page_table)[PAGE_LEVEL_INDEX(VPage, 1)];
@@ -331,12 +439,11 @@ init_mmap(EFI_MEMORY_DESCRIPTOR *MemoryMap, UINT64 *NumEntries, UINT64 *RamSize,
     EFI_ASSERT(*NumEntries != 0);
     EFI_MEMORY_DESCRIPTOR *Prev = &MemoryMap[0];
     Prev->Type = EfiConventionalMemory;
-    UINT64 UsableSize = PAGE_SIZE;
     UINT64 NewLength = 1;
 
     for (UINT64 i = 1; i < *NumEntries; ++i) {
         EFI_MEMORY_DESCRIPTOR *Memory = &MemoryMap[i];
-        /* uefi table 30: reclaim segment if usable by os */
+        /* uefi table 30: reclaim segment if not unusable by os */
         if (TRUE
             && Memory->Type != EfiReservedMemoryType
             && Memory->Type != EfiLoaderCode
@@ -348,9 +455,6 @@ init_mmap(EFI_MEMORY_DESCRIPTOR *MemoryMap, UINT64 *NumEntries, UINT64 *RamSize,
             && Memory->Type != EfiMemoryMappedIOPortSpace
         )
             Memory->Type = EfiConventionalMemory;
-
-        if (Memory->Type == EfiConventionalMemory)
-            UsableSize += Memory->NumberOfPages * PAGE_SIZE;
 
         /* can be merged? */
         if (Memory->Type == Prev->Type

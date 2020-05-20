@@ -1,6 +1,12 @@
 /* this file provides tools for working with virtual memory */
 #pragma once
+#ifndef __ASSEMBLER__
 #include <stdint.h>
+#endif
+
+#ifdef __ASSEMBLER__
+#define PAGE_SIZE 4096
+#else
 #define PAGE_SIZE 0x1000ULL
 /* the base address of the page containing addr */
 #define PAGE_BASE(addr) ((addr) & ~(PAGE_SIZE - 1))
@@ -42,13 +48,17 @@ typedef pte_t page_table_t[512];
 enum page_table_entry_flags {
     PTE_P  = 1 << 0, /* present */
     PTE_RW = 1 << 1, /* true: read+write; false: read only */
-    PTE_US = 1 << 2, /* true: supervisor; false: user */
+    PTE_US = 1 << 2, /* true: user; false: supervisor */
     PTE_WT = 1 << 3, /* write through */
     PTE_CD = 1 << 4, /* cache disable */
     PTE_A  = 1 << 5, /* accessed */
     PTE_D  = 1 << 6, /* dirty */
-    PTE_AT = 1 << 7, /* attribute table */
+    PTE_AT = 1 << 7, /* level 1: attribute table */
+    PTE_PS = 1 << 7, /* level 3, 2: page size */
+                     /* level 4: reserved */
     PTE_G  = 1 << 8, /* global */
-/* physical address to next paging level */
-#define PTE_ADDR_MASK 0xfffffffff000
+#define PTE_ADDR_MASK 0xfffffffff000 /* physical address to next paging level */
+#define PTE_XD (1ULL << 63) /* execute disable */
 };
+
+#endif /* __ASSEMBLER */

@@ -16,6 +16,7 @@ def main(argv):
                          r" | awk '{ print $4 }'")).splitlines()
     text = str_hex_to_int(text)
     data = str_hex_to_int(data)
+    bp = 'bp.gdb' if os.path.exists('bp.gdb') else 'default-bp.gdb'
     execlp(
         'gdb', 'gdb',
         '-ex', 'set confirm off',
@@ -25,6 +26,7 @@ def main(argv):
         '-ex', 'set confirm on',
         '-ex', 'set architecture i386:x86-64:intel',
         '-ex', 'target remote :1234',
+        '-ex', f'source {bp}',
     )
 
 
