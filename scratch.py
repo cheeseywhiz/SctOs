@@ -36,3 +36,27 @@ def pp_bits(bits, start=0):
 
 def in_range(base, size, num):
     return base <= num < (base + size)
+
+
+# virtual memory
+PAGE_SIZE = u64(4 * p1KB)
+
+def page_base(addr):
+    addr = u64(addr)
+    return addr & ~(PAGE_SIZE - u64(1))
+
+
+def next_page(addr):
+    addr = u64(addr)
+    return page_base(addr + PAGE_SIZE)
+
+
+def page_offset(addr):
+    addr = u64(addr)
+    return addr & (PAGE_SIZE - u64(1))
+
+
+def num_pages(base, size):
+    base = u64(base)
+    size = u64(size)
+    return next_page(base + size - u64(1) - page_base(base)) // PAGE_SIZE

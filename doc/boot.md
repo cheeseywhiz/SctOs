@@ -4,8 +4,8 @@
 2. acquire preliminary memory map
 3. load kernel executable into physical memory
 4. prepare boot page tables with Loader segments identity mapped,
-   `bootloader\_data` mapped to physical memory region, and kernel mapped to
-   high half
+   `bootloader\_data` and `free_memory` mapped to physical memory region, and
+   kernel mapped to high half
 5. acquire final memory map
 6. ExitBootServices
 7. SetVirtualAddressMap

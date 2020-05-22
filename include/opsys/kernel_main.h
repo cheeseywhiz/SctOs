@@ -1,6 +1,7 @@
 #pragma once
+#include "util.h"
 struct bootloader_data;
 typedef void kernel_main_t(struct bootloader_data*);
 #ifdef _KERNEL
-kernel_main_t kernel_main;
+__noreturn kernel_main_t kernel_main;
 #endif

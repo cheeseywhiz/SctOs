@@ -67,7 +67,9 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
      *    page tables */
     UINT64 new_stack = allocate_page();
     struct bootloader_data *bootloader_data = (void*)allocate_page();
-    bootloader_data->n_pages = 4;
+    /* doesn't really matter how much we start out with, since they're all
+     * immediately added to the free list by the os */
+    bootloader_data->n_pages = 32;
     if (_EFI_ERROR(Status = uefi_call_wrapper(BS->AllocatePages, 4,
             AllocateAnyPages, EfiLoaderData, bootloader_data->n_pages,
             (UINT64*)&bootloader_data->free_memory)))
@@ -139,7 +141,7 @@ efi_main2(page_table_t *boot_page_table,
           struct bootloader_data *bootloader_data)
 {
     /* 9. enable paging with boot page tables */
-    set_cr3(boot_page_table);
+    set_cr3((UINT64)boot_page_table);
     bootloader_data = /* parkour! */
         (void*)(bootloader_data->paddr_base + (UINT64)bootloader_data);
 
@@ -163,7 +165,6 @@ efi_main2(page_table_t *boot_page_table,
 
     /* 11. jump to kernel */
     kernel_main_t *kernel_main = (kernel_main_t*)bootloader_data->ehdr->e_entry;
-    BREAK();
     kernel_main(bootloader_data);
     __builtin_unreachable();
 }
@@ -417,9 +418,23 @@ prepare_boot_page_tables(EFI_MEMORY_DESCRIPTOR *MemoryMap, UINT64 NumEntries,
         }
     }
 
+    /* following virtual-memory.md new address space.
+     * it's a shame we have to do this with the bootloader and the kernel later,
+     * almost the exact same way. */
+
     /* map bootloader_data to runtime physical memory region */
     map_page(boot_page_table, (UINT64)bootloader_data,
              *PaddrBase + (UINT64)bootloader_data, PTE_RW);
+
+    for (uint64_t i = 0; i < bootloader_data->n_pages; ++i) {
+        /* now that free memory is at it's final location, they can later be
+         * added to the free list */
+        UINT64 Page = (UINT64)bootloader_data->free_memory + PAGE_SIZE * i;
+        map_page(boot_page_table, Page, *PaddrBase + Page, PTE_RW);
+    }
+
+    bootloader_data->free_memory =
+        (void*)(*PaddrBase + (UINT64)bootloader_data->free_memory);
 
     /* map kernel to high half */
     for (Elf64_Half i = 0; i < ehdr->e_phnum; ++i) {
@@ -451,8 +466,8 @@ map_page(page_table_t *boot_page_table, UINT64 PPage, UINT64 VPage,
     if (!(*pml4e & PTE_P))
         *pml4e = allocate_page() | PTE_P | PTE_RW;
 
-    page_table_t *pade_dir_ptr_table = (page_table_t*)(*pml4e & PTE_ADDR_MASK);
-    pte_t *pdpte = &(*pade_dir_ptr_table)[PAGE_LEVEL_INDEX(VPage, 3)];
+    page_table_t *page_dir_ptr_table = (page_table_t*)(*pml4e & PTE_ADDR_MASK);
+    pte_t *pdpte = &(*page_dir_ptr_table)[PAGE_LEVEL_INDEX(VPage, 3)];
     if (!(*pdpte & PTE_P))
         *pdpte = allocate_page() | PTE_P | PTE_RW;
 

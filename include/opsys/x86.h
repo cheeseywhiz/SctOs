@@ -3,7 +3,6 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "util.h"
-#include "opsys/virtual-memory.h"
 
 __attribute__((always_inline))
 static inline void
@@ -76,17 +75,17 @@ set_cr0(uint64_t cr0)
  * structure. the last 12 bits (which are zero because of page alignment)
  * contain flags but they don't mean anything with 4-level paging, so these bits
  * should stay zeroed. */
-static inline page_table_t*
+static inline uint64_t
 get_cr3(void)
 {
-    page_table_t *cr3;
+    uint64_t cr3;
     __asm volatile("mov %%cr3, %0"
                    : "=r"(cr3));
     return cr3;
 }
 
-static inline page_table_t*
-set_cr3(page_table_t *cr3)
+static inline uint64_t
+set_cr3(uint64_t cr3)
 {
     __asm volatile("mov %0, %%cr3"
                    :: "r"(cr3));

@@ -16,10 +16,11 @@
   tables. this does not currently seem an issue.
 
 ## new address space
+note: the bootloader repeats much of this work.
 - physical memory up to `pmem_tail`
 - `bootloader\_data`
-  - EFI MemoryMap
-    - Runtime segments from EFI MemoryMap
+  - `free_memory`
+  - runtime `MemoryMap` segments
 - kernel segments from ELF program headers
   - with RELRO segment made RO
 

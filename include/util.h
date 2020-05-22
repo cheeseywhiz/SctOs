@@ -5,6 +5,7 @@
 #define __malloc __attribute__((malloc))
 #define __noreturn __attribute__((noreturn))
 #define __section(sec) __attribute__((section(sec)))
+#define __ro_after_init __section(".data.rel.ro")
 #define IN_RANGE(base, size, x) ((base) <= (x) && (x) < (base) + (size))
 #define HANG() do {} while (1)
 
