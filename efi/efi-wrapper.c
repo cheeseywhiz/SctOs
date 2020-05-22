@@ -2,6 +2,7 @@
 #include <efi.h>
 #include <efilib.h>
 #include "efi-wrapper.h"
+#include "util.h"
 
 void
 exit_status(const char *file, int line, EFI_STATUS Status, const CHAR16 *fmt,
@@ -27,4 +28,9 @@ a2u(const char *a)
     while ((*u_p++ = (CHAR16)*a++))
         ;
     return u;
+}
+
+void
+break_(void)
+{
 }

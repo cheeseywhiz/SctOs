@@ -1,7 +1,7 @@
 #pragma once
+#include <stdbool.h>
 #include "elf.h"
 #include "util.h"
-#include <stdbool.h>
 
 /* the DT_HASH table containing chains of Elf64_Words gives us a hint that this
  * bounds the size of the symbol table */

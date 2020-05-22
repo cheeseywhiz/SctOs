@@ -27,13 +27,7 @@
 
 /* mem_layout.md */
 #define KERNEL_BASE n1GB
-
-/* these are set during load.
- * they would go in .data.ro_after_init like linux if I get around to
- * implementing that. */
-extern uint64_t ram_size;
-extern uint64_t paddr_max; /* maximum accessible physical page + 1 */
-extern uint64_t paddr_base; /* -1GB - paddr_max */
+/* see also bootloader_data for other layout variables */
 
 /* x86-64-system figure 4-8: the index within the given (1-indexed) page level
  * that the vaddr refers to, e.g. 4 for the index in PML4, 1 for the index in

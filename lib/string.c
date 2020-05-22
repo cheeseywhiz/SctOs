@@ -1,8 +1,8 @@
 /* copied from xv6
  * general memory and string manipulation standard functions */
-#include "x86.h"
-#include "string.h"
 #include <stddef.h>
+#include "string.h"
+#include "opsys/x86.h"
 
 void*
 memset(void *dst, int c, size_t n)

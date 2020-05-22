@@ -5,6 +5,13 @@
 #include "util.h"
 #include "opsys/virtual-memory.h"
 
+__attribute__((always_inline))
+static inline void
+pause(void)
+{
+    __asm volatile("pause");
+}
+
 static inline void
 stosb(void *addr, int data, size_t cnt)
 {
@@ -31,13 +38,7 @@ disable_interrupts(void)
     __asm volatile("cli");
 }
 
-static inline __noreturn void
-halt(void)
-{
-    disable_interrupts();
-    __asm volatile("hlt");
-    HANG();
-}
+__noreturn void halt(void);
 
 /* x86-64-system figure 2-7 */
 enum cr0_flags {

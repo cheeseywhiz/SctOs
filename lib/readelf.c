@@ -1,9 +1,9 @@
 /* this file contains a facility to parse elf files */
+#include <stdbool.h>
 #include "readelf.h"
 #include "elf.h"
 #include "util.h"
 #include "string.h"
-#include <stdbool.h>
 
 /* init the elf_file with NULL/0 members */
 void

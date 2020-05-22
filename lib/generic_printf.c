@@ -1,10 +1,10 @@
 /* this file contains a generic printf facility that can be used to implement
  * printf for specific output methods */
+#include <stdarg.h>
+#include <stdbool.h>
 #include "generic_printf.h"
 #include "string.h"
 #include "util.h"
-#include <stdarg.h>
-#include <stdbool.h>
 
 static void put_int(write_func, long long);
 static void put_unsigned(write_func, unsigned long long);

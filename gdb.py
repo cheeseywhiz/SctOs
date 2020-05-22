@@ -15,7 +15,7 @@ def main(argv):
         '--kernel', '-k', action='store_true',
         help='add symbols for the kernel')
     parser.add_argument(
-        '--breakpoints', '-b', action='store', default='default-bp.gdb',
+        '--breakpoints', '-b', action='store',
         help='gdb source file (from save breakpoints)')
 
     if len(argv) == 1:
@@ -23,11 +23,10 @@ def main(argv):
         sys.exit(0)
 
     py_args = parser.parse_args(argv[1:])
-    print(py_args)
-
-    args = [
-        'set architecture i386:x86-64:intel',
+    gdb_args = [
+        'set height unlimited',  # no pagination
         'set confirm off',
+        'set architecture i386:x86-64:intel',
     ]
     loader, debug_loader, kernel = \
         system('make print-debug-execs').splitlines()
@@ -38,34 +37,42 @@ def main(argv):
                              r" | awk '{ print $4 }'")).splitlines()
         text = str_hex_to_int(text)
         data = str_hex_to_int(data)
-        args.append(f'add-symbol-file {debug_loader}'
-                    f' {hex(py_args.efi+text)}'
-                    f' -s .data {hex(py_args.efi+data)}')
+        gdb_args.append(f'add-symbol-file {debug_loader}'
+                        f' {hex(py_args.efi+text)}'
+                        f' -s .data {hex(py_args.efi+data)}')
 
     if py_args.kernel:
-        text, = system((rf"objdump -h {kernel}"
-                        r" | fgrep text"
-                        r" | awk '{ print $4 }'")).splitlines()
-        text = str_hex_to_int(text)
+        parts = ['add-symbol-file', kernel]
+        cmd = (f'objdump -h {kernel}'
+               ' | awk \'/^\\s*[0-9]/ { print $2 " " $4 }\'')
         kernel_base = 0xffffffffc0000000
-        args.append(f'add-symbol-file {kernel} '
-                    f' {hex(kernel_base+text)}')
 
-    args.extend([
-        'set confirm on',
+        for line in system(cmd).splitlines():
+            section, addr = line.split()
+            addr = str_hex_to_int(addr)
+            if not addr:
+                continue
+            addr += kernel_base
+
+            if section == '.text':
+                parts.insert(2, hex(addr))
+            else:
+                parts.extend(['-s', section, hex(addr)])
+
+        gdb_args.append(' '.join(parts))
+
+    gdb_args.extend([
         'target remote :1234',
         f'source {py_args.breakpoints}',
+        'set confirm on',
     ])
 
-    args2 = []
+    args = []
 
-    if not os.path.exists(py_args.breakpoints):
-        system(f'cp default-bp.gdb {py_args.breakpoints}')
+    for arg in gdb_args:
+        args.extend(['-ex', arg])
 
-    for arg in args:
-        args2.extend(['-ex', arg])
-
-    execlp('gdb', 'gdb', *args2)
+    execlp('gdb', 'gdb', *args)
 
 
 def str_hex_to_int(str_hex):

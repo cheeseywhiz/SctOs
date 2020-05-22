@@ -15,23 +15,23 @@ disk: $(DISK)
 
 KERNEL_CC := ./cross/bin/x86_64-elf-gcc
 
-CFLAGS += -std=gnu11 -O2 -fdiagnostics-color=always
-CPPFLAGS += -iquote include -MMD -MP
+CPPFLAGS += -MMD -MP -iquote include -I$(HOME)/.local/include/efi \
+	-I$(HOME)/.local/include/efi/x86_64 -DGNU_EFI_USE_MS_ABI
+CFLAGS += -std=gnu11 -O2 -fdiagnostics-color=always -fno-common
 CFLAGS += -Werror -Wall -Wextra -pedantic -Wshadow -Wpointer-arith \
 	-Wcast-align -Wwrite-strings -Wmissing-prototypes -Wmissing-declarations \
 	-Wredundant-decls -Wnested-externs -Winline -Wno-long-long -Wconversion \
 	-Wstrict-prototypes
 KERNEL_CFLAGS += -ffreestanding -fPIE
+KERNEL_CPPFLAGS += -D_KERNEL
 ifneq ($(KERNEL_DEBUG),)
 KERNEL_CPPFLAGS += -D_KERNEL_DEBUG=$(KERNEL_DEBUG)
 KERNEL_CFLAGS += -O0 -g3
 endif
 KERNEL_LDFLAGS += -nostdlib -static-pie -Wl,-static,-pie,--no-dynamic-linker \
 	-Wl,-z,separate-code,-z,max-page-size=0x1000,-z,noexecstack,-z,relro \
-	-Wl,-e,main
+	-Wl,-e,kernel_main
 KERNEL_LDLIBS := -lgcc
-EFI_CPPFLAGS += -I$(HOME)/.local/include/efi \
-	-I$(HOME)/.local/include/efi/x86_64 -DGNU_EFI_USE_MS_ABI
 EFI_CFLAGS += -mno-red-zone -mno-avx -fshort-wchar -fno-strict-aliasing \
 	-ffreestanding -fno-stack-protector -fno-merge-constants -fPIC \
 	-Wno-write-strings -Wno-redundant-decls -Wno-strict-prototypes
@@ -63,7 +63,7 @@ QEMUFLAGS += \
 	-s \
 	-no-reboot \
 
-ifneq ($(EFI_DEBUG),)
+ifneq ($(EFI_DEBUG)$(KERNEL_DEBUG),)
 QEMUFLAGS += -S
 endif
 
@@ -80,7 +80,7 @@ KERNEL_TREE := $(shell find $(KERNEL_DIRS) -type d)
 KERNEL_TREE := $(BUILD_KERNEL) $(addprefix $(BUILD_KERNEL)/, $(KERNEL_TREE))
 $(KERNEL) $(KERNEL_OBJECTS): | kernel-tree
 
-EFI_C_SOURCES := $(shell find efi -name "*.c") lib/readelf.c
+EFI_C_SOURCES := $(shell find efi -name "*.c") lib/readelf.c lib/opsys/x86.c
 EFI_ASM_SOURCES := $(shell find efi -name "*.S")
 EFI_SOURCES := $(EFI_C_SOURCES) $(EFI_ASM_SOURCES)
 EFI_OBJECTS := $(EFI_C_SOURCES:%.c=%.o) $(EFI_ASM_SOURCES:%.S=%.o)
@@ -91,7 +91,7 @@ EFI_SO := $(BUILD_EFI)/opsys-loader.so
 EFI_EXEC := $(BUILD_EFI)/opsys-loader.efi
 EFI_DEBUG_EXEC := $(BUILD_EFI)/opsys-loader-debug.efi
 EFI_EXECS := $(EFI_SO) $(EFI_EXEC) $(EFI_DEBUG_EXEC)
-EFI_TREE := $(shell find efi -type d) lib
+EFI_TREE := $(shell find efi -type d) lib lib/opsys
 EFI_TREE := $(BUILD_EFI) $(addprefix $(BUILD_EFI)/, $(EFI_TREE))
 $(EFI_EXECS) $(EFI_OBJECTS): | efi-tree
 $(BUILD_OVMF_VARS) $(DISK): | efi-tree
@@ -180,7 +180,7 @@ tags: $(SOURCES) $(shell find . -name "*.h" -not -path "./cross/*")
 .PHONY: all kernel-tree efi-tree test-tree kernel efi tests clean \
 	compile_commands.json qemu print-debug-execs $(FORCE)
 
-all: tests kernel efi
+all: tests kernel efi disk
 
 kernel-tree:
 	@mkdir -p $(KERNEL_TREE)

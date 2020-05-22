@@ -6,8 +6,10 @@
 #include "readelf.h"
 #include "elf.h"
 #include "util.h"
-#include "x86.h"
+#include "opsys/x86.h"
 #include "opsys/virtual-memory.h"
+#include "opsys/bootloader_data.h"
+#include "opsys/kernel_main.h"
 
 static const CHAR16 *const kernel_fname = L"\\opsys";
 static EFI_FILE_HANDLE RootDir = NULL;
@@ -24,8 +26,7 @@ efi_debug_entry(EFI_LOADED_IMAGE *LoadedImage)
 {
     Print(L"ImageBase: 0x%lx\n", LoadedImage->ImageBase);
     print_cr0();
-    page_table_t *cr3 = get_cr3();
-    Print(L"cr3: 0x%lx\n", cr3);
+    Print(L"cr3: 0x%lx\n", get_cr3());
     print_cr4();
     print_efer();
 }
@@ -34,12 +35,14 @@ void* memset(void*, int, size_t);
 static void load_kernel(const Elf64_Ehdr**, const Elf64_Phdr**);
 static void print_program_headers(const Elf64_Ehdr*, const Elf64_Phdr*);
 static page_table_t*  prepare_boot_page_tables(
-    EFI_MEMORY_DESCRIPTOR*, UINT64, const Elf64_Ehdr*, const Elf64_Phdr*);
+    EFI_MEMORY_DESCRIPTOR*, UINT64, struct bootloader_data*, const Elf64_Ehdr*,
+    const Elf64_Phdr*);
 static UINT64 allocate_page(void);
-typedef void efi_main2_t(page_table_t*);
+typedef void efi_main2_t(page_table_t*, struct bootloader_data*);
 static __noreturn efi_main2_t efi_main2;
-extern void setup_new_stack(page_table_t*, efi_main2_t, UINT64);
-static void init_mmap(EFI_MEMORY_DESCRIPTOR*, UINT64*, UINT64*, UINT64*);
+extern void setup_new_stack(page_table_t*, struct bootloader_data*,
+                            efi_main2_t, UINT64);
+static void init_mmap(struct bootloader_data*);
 static void print_memory_map(EFI_MEMORY_DESCRIPTOR*, UINT64);
 
 /* UEFI firmware calls efi_main in long mode with 4-level paging enabled (with
@@ -54,15 +57,24 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
             ImageHandle, &LoadedImageProtocol, (void**)&LoadedImage)))
         EXIT_STATUS(Status, L"handle LoadedImageProtocol");
     efi_debug_entry(LoadedImage);
+    BREAK();
     if (!(RootDir = LibOpenRoot(LoadedImage->DeviceHandle)))
         EXIT_STATUS(EFI_ABORTED, L"LibOpenRoot");
 
     /* bootloader sequence according to boot.md */
 
-    /* 1. allocate new stack */
+    /* 1. allocate boot memory: memory that will be accessible with boot
+     *    page tables */
     UINT64 new_stack = allocate_page();
+    struct bootloader_data *bootloader_data = (void*)allocate_page();
+    bootloader_data->n_pages = 4;
+    if (_EFI_ERROR(Status = uefi_call_wrapper(BS->AllocatePages, 4,
+            AllocateAnyPages, EfiLoaderData, bootloader_data->n_pages,
+            (UINT64*)&bootloader_data->free_memory)))
+        EXIT_STATUS(Status, L"AllocatePages");
 
-    /* 2. acquire preliminary memory map */
+    /* 2. acquire preliminary memory map: Loader segments in this map are paged
+     *    in to the boot page tables */
     UINT64 NumEntries, MapKey, DescriptorSize;
     UINT32 DescriptorVersion;
     EFI_MEMORY_DESCRIPTOR *MemoryMap;
@@ -70,7 +82,7 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
                                    &DescriptorVersion)))
         EXIT_STATUS(EFI_ABORTED, L"LibMemoryMap");
     /* edk2 size is longer than spec by 8 bytes for some reason,
-     * so check that we're using a patched gnu-efi */
+     * so check that we're using a patched efi lib */
     EFI_ASSERT(DescriptorSize == sizeof(*MemoryMap));
     print_memory_map(MemoryMap, NumEntries);
 
@@ -83,53 +95,76 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
     RootDir = NULL;
 
     /* 4. prepare boot page tables */
-    page_table_t *boot_page_table =
-        prepare_boot_page_tables(MemoryMap, NumEntries, ehdr, phdrs);
+    page_table_t *boot_page_table = prepare_boot_page_tables(
+        MemoryMap, NumEntries, bootloader_data, ehdr, phdrs);
     FreePool(MemoryMap);
 
     /* 5. acquire final memory map */
-    if (!(MemoryMap = LibMemoryMap(&NumEntries, &MapKey, &DescriptorSize,
-                                   &DescriptorVersion)))
-        EXIT_STATUS(EFI_ABORTED, L"LibMemoryMap");
-
+    UINT64 MMSize = PAGE_SIZE - sizeof(*bootloader_data);
+    if (_EFI_ERROR(Status = uefi_call_wrapper(BS->GetMemoryMap, 5,
+            &MMSize, bootloader_data->MemoryMap, &MapKey, &DescriptorSize,
+            &DescriptorVersion)))
+        EXIT_STATUS(Status, L"GetMemoryMap");
+    bootloader_data->NumEntries = MMSize / sizeof(*bootloader_data->MemoryMap);
+    
     /* 6. ExitBootServices */
     if (_EFI_ERROR(Status = uefi_call_wrapper(BS->ExitBootServices, 2,
             ImageHandle, MapKey)))
         EXIT_STATUS(Status, L"ExitBootServices");
 
     /* 7. SetVirtualAddressMap */
-    UINT64 RamSize, PaddrMax;
-    init_mmap(MemoryMap, &NumEntries, &RamSize, &PaddrMax);
+    init_mmap(bootloader_data);
     if (_EFI_ERROR(Status = uefi_call_wrapper(RT->SetVirtualAddressMap, 4,
-            NumEntries * sizeof(*MemoryMap), DescriptorSize, DescriptorVersion,
-            MemoryMap)))
+            NumEntries * sizeof(*bootloader_data->MemoryMap), DescriptorSize,
+            DescriptorVersion, bootloader_data->MemoryMap)))
         halt();
+    /* XXX: why doesn't this work? it returns Not Found even though RT is in an
+     * EfiRuntimeServicesData segment which of course has a virtual mapping
+    if (_EFI_ERROR(Status = uefi_call_wrapper(RT->ConvertPointer, 2,
+            0, (void**)&RT)))
+        halt();
+    */
+    bootloader_data->RT = (void*)(bootloader_data->paddr_base + (uint64_t)RT);
 
     /* 8. set up new stack */
-    setup_new_stack(boot_page_table, efi_main2, new_stack);
+    setup_new_stack(boot_page_table, bootloader_data, efi_main2, new_stack);
     /* control transfers almost directly to efi_main2 with new stack */
     __builtin_unreachable();
 }
 
+static void do_relocations(const Elf64_Dyn*);
+
 static void
-efi_main2(page_table_t *boot_page_table)
+efi_main2(page_table_t *boot_page_table,
+          struct bootloader_data *bootloader_data)
 {
     /* 9. enable paging with boot page tables */
     set_cr3(boot_page_table);
+    bootloader_data = /* parkour! */
+        (void*)(bootloader_data->paddr_base + (UINT64)bootloader_data);
 
-    /* 10. finish preparation of kernel executable */
-    /* XXX:
-     * need to implement these as they become needed
-     * - relocations
-     * - set load-time synbols
-     * - clear bss
-     * - set relro pages to ro
-     */
-    const Elf64_Ehdr *ehdr = (void*)KERNEL_BASE;
+    /* 10. do relocations */
+    bootloader_data->ehdr = (void*)KERNEL_BASE;
+    bootloader_data->phdrs =
+        (void*)(KERNEL_BASE + bootloader_data->ehdr->e_phoff);
+    const Elf64_Dyn *dynamic = NULL;
+
+    for (Elf64_Half i = 0; i < bootloader_data->ehdr->e_phnum; ++i) {
+        const Elf64_Phdr *phdr = &bootloader_data->phdrs[i];
+        if (phdr->p_type != PT_DYNAMIC)
+            continue;
+        dynamic = (void*)phdr->p_vaddr;
+        break;
+    }
+
+    if (!dynamic)
+        halt();
+    do_relocations(dynamic);
 
     /* 11. jump to kernel */
-    void (*main)(void) = (void (*)(void))ehdr->e_entry;
-    main();
+    kernel_main_t *kernel_main = (kernel_main_t*)bootloader_data->ehdr->e_entry;
+    BREAK();
+    kernel_main(bootloader_data);
     __builtin_unreachable();
 }
 
@@ -325,12 +360,46 @@ print_program_header(const Elf64_Phdr *phdr)
 
 static void map_page(page_table_t*, UINT64, UINT64, UINT64);
 
-/* prepare boot page tables with Loader segments identity mapped and kernel
- * mapped to high half */
+/* prepare boot page tables with Loader segments identity mapped,
+ * bootloader_data mapped to physical memory region, and kernel mapped to high
+ * half */
 static page_table_t*
 prepare_boot_page_tables(EFI_MEMORY_DESCRIPTOR *MemoryMap, UINT64 NumEntries,
+                         struct bootloader_data *bootloader_data,
                          const Elf64_Ehdr *ehdr, const Elf64_Phdr *phdrs)
 {
+    /* this should be rewritten in C++ because this is exactly how C++ member
+     * functions work */
+    UINT64 *RamSize = &bootloader_data->ram_size;
+    UINT64 *PaddrBase = &bootloader_data->paddr_base;
+    UINT64 *PaddrSize = &bootloader_data->paddr_size;
+    UINT64 *MmioBase = &bootloader_data->mmio_base;
+    UINT64 *MmioSize = &bootloader_data->mmio_size;
+
+    /* determine RamSize, PaddrMax, MmioSize */
+    *RamSize = 0;
+    *PaddrSize = 0;
+    *MmioSize = 0;
+
+    for (UINT64 i = 0; i < NumEntries; ++i) {
+        EFI_MEMORY_DESCRIPTOR *Memory = &MemoryMap[i];
+        if (Memory->Type == EfiMemoryMappedIO
+                || Memory->Type == EfiMemoryMappedIOPortSpace)
+            *MmioSize += Memory->NumberOfPages * PAGE_SIZE;
+        if (i != NumEntries - 1 - 2)
+            continue;
+        EFI_MEMORY_DESCRIPTOR *Next = &MemoryMap[i + 1];
+        *PaddrSize = *RamSize =
+            Next->PhysicalStart + Next->NumberOfPages * PAGE_SIZE;
+        *RamSize = Next->Type == EfiConventionalMemory
+            ? Memory->PhysicalStart + Memory->NumberOfPages * PAGE_SIZE
+              + Next->NumberOfPages * PAGE_SIZE
+            : *PaddrSize;
+    }
+
+    *PaddrBase = KERNEL_BASE - *PaddrSize;
+    *MmioBase = *PaddrBase - *MmioSize;
+
     page_table_t *boot_page_table = (page_table_t*)allocate_page();
 
     /* identity map Loader segments */
@@ -347,6 +416,10 @@ prepare_boot_page_tables(EFI_MEMORY_DESCRIPTOR *MemoryMap, UINT64 NumEntries,
             map_page(boot_page_table, Page, Page, Flags);
         }
     }
+
+    /* map bootloader_data to runtime physical memory region */
+    map_page(boot_page_table, (UINT64)bootloader_data,
+             *PaddrBase + (UINT64)bootloader_data, PTE_RW);
 
     /* map kernel to high half */
     for (Elf64_Half i = 0; i < ehdr->e_phnum; ++i) {
@@ -411,34 +484,21 @@ allocate_page(void)
 /* parse and complete filling out the memory map
  * *post ExitBootServices* */
 static void
-init_mmap(EFI_MEMORY_DESCRIPTOR *MemoryMap, UINT64 *NumEntries, UINT64 *RamSize,
-    UINT64 *PaddrMax)
+init_mmap(struct bootloader_data *bootloader_data)
 {
-    /* determine RamSize, PaddrMax, MmioSize */
-    *RamSize = 0;
-    *PaddrMax = 0;
-    UINT64 MmioSize = 0;
-
-    for (UINT64 i = 0; i < *NumEntries; ++i) {
-        EFI_MEMORY_DESCRIPTOR *Memory = &MemoryMap[i];
-        if (Memory->Type == EfiMemoryMappedIO
-                || Memory->Type == EfiMemoryMappedIOPortSpace)
-            MmioSize += Memory->NumberOfPages * PAGE_SIZE;
-        if (i != *NumEntries - 1 - 2)
-            continue;
-        EFI_MEMORY_DESCRIPTOR *Next = &MemoryMap[i + 1];
-        *PaddrMax = *RamSize =
-            Next->PhysicalStart + Next->NumberOfPages * PAGE_SIZE;
-        *RamSize = Next->Type == EfiConventionalMemory
-            ? Memory->PhysicalStart + Memory->NumberOfPages * PAGE_SIZE
-              + Next->NumberOfPages * PAGE_SIZE
-            : *PaddrMax;
-    }
+    EFI_MEMORY_DESCRIPTOR *MemoryMap = bootloader_data->MemoryMap;
+    UINT64 *NumEntries = &bootloader_data->NumEntries;
+    if (!*NumEntries)
+        halt();
 
     /* merge consecutive entries. also, reclaim certain efi segments. */
-    EFI_ASSERT(*NumEntries != 0);
     EFI_MEMORY_DESCRIPTOR *Prev = &MemoryMap[0];
-    Prev->Type = EfiConventionalMemory;
+    /* edk2's first entry is the NULL page which I will not use */
+    if (Prev->Type != EfiBootServicesCode
+            || Prev->PhysicalStart != 0
+            || Prev->NumberOfPages != 1)
+        halt();
+    Prev->Type = EfiUnusableMemory;
     UINT64 NewLength = 1;
 
     for (UINT64 i = 1; i < *NumEntries; ++i) {
@@ -473,8 +533,7 @@ init_mmap(EFI_MEMORY_DESCRIPTOR *MemoryMap, UINT64 *NumEntries, UINT64 *RamSize,
     *NumEntries = NewLength;
 
     /* request virtual mapping for runtime segments */
-    UINT64 PaddrBase = KERNEL_BASE - *PaddrMax;
-    UINT64 MmioLoadVaddr = PaddrBase - MmioSize;
+    UINT64 MmioLoadVaddr = bootloader_data->mmio_base;
 
     for (UINT64 i = 0; i < *NumEntries; ++i) {
         EFI_MEMORY_DESCRIPTOR *Memory = &MemoryMap[i];
@@ -484,7 +543,8 @@ init_mmap(EFI_MEMORY_DESCRIPTOR *MemoryMap, UINT64 *NumEntries, UINT64 *RamSize,
             Memory->VirtualStart = MmioLoadVaddr;
             MmioLoadVaddr += Memory->NumberOfPages * PAGE_SIZE;
         } else if (Memory->Attribute & EFI_MEMORY_RUNTIME) {
-            Memory->VirtualStart = Memory->PhysicalStart + PaddrBase;
+            Memory->VirtualStart =
+                Memory->PhysicalStart + bootloader_data->paddr_base;
         }
     }
 }
@@ -522,4 +582,48 @@ print_memory_descriptor(EFI_MEMORY_DESCRIPTOR *Memory)
     PRINT_ATTR(UC);
     PRINT_ATTR(RUNTIME);
     Print(L"\n");
+}
+
+/* do relocations according to SysV ABI */
+static void
+do_relocations(const Elf64_Dyn *dynamic)
+{
+    const Elf64_Rela *relas = NULL;
+    Elf64_Xword num_relas = 0;
+
+    for (const Elf64_Dyn *dyn = dynamic; dyn->d_tag != DT_NULL; ++dyn) {
+        switch (dyn->d_tag) {
+        case DT_REL:
+            /* XXX: not supported */
+            halt();
+        case DT_RELA:
+            relas = (void*)(KERNEL_BASE + dyn->d_un.d_ptr);
+            break;
+        case DT_RELASZ:
+            num_relas = dyn->d_un.d_val / sizeof(*relas);
+            break;
+        case DT_RELAENT:
+            if (dyn->d_un.d_val != sizeof(*relas))
+                halt();
+            break;
+        }
+    }
+
+    if (!relas)
+        return;
+
+    for (Elf64_Xword i = 0; i < num_relas; ++i) {
+        const Elf64_Rela *rela = &relas[i];
+        Elf64_Addr offset = KERNEL_BASE + rela->r_offset;
+
+        /* SysV ABI table 4.9 */
+        switch (ELF64_R_TYPE(*rela)) {
+        case R_X86_64_RELATIVE:
+            *(uint64_t*)offset = KERNEL_BASE + (uint64_t)rela->r_addend;
+            break;
+        default:
+            /* XXX: unsupported */
+            halt();
+        }
+    }
 }
