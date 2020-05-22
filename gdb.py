@@ -61,12 +61,12 @@ def main(argv):
 
         gdb_args.append(' '.join(parts))
 
-    gdb_args.extend([
-        'target remote :1234',
-        f'source {py_args.breakpoints}',
-        'set confirm on',
-    ])
+    gdb_args.append('target remote :1234')
 
+    if py_args.breakpoints is not None:
+        gdb_args.append(f'source {py_args.breakpoints}')
+
+    gdb_args.append('set confirm on')
     args = []
 
     for arg in gdb_args:

@@ -13,7 +13,6 @@ extern char __bss_start[], _end[];
  * bootloader_data mapped to the physical memory region. */
 void kernel_main(struct bootloader_data *bootloader_data_in)
 {
-    BREAK();
     /* clear bss */
     memset(__bss_start, 0, (size_t)_end - (size_t)__bss_start);
     bootloader_data = bootloader_data_in;

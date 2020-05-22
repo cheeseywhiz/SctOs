@@ -11,5 +11,5 @@ perf.*
 introspect
 tags
 out.txt
-bp.gdb
+*.gdb
 __pycache__
