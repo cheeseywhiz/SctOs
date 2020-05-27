@@ -49,6 +49,7 @@ EFI_LDLIBS := -lefi -lgnuefi -lgcc
 TEST_CFLAGS += -O0 -ggdb
 TEST_LDFLAGS += -Wl,--hash-style=sysv
 
+QEMUDEPS := $(BUILD_OVMF_VARS) $(DISK) efi
 QEMUFLAGS += \
 	-drive if=pflash,format=raw,unit=0,file=$(OVMF_CODE),readonly=on \
 	-drive if=pflash,format=raw,unit=1,file=$(BUILD_OVMF_VARS) \
@@ -60,8 +61,8 @@ QEMUFLAGS += \
 	-m 1G \
 	-nographic \
 	-serial mon:stdio \
-	-s \
 	-no-reboot \
+	-s \
 
 ifneq ($(EFI_DEBUG)$(KERNEL_DEBUG),)
 QEMUFLAGS += -S
@@ -145,12 +146,19 @@ $(BUILD_EFI)/%.o: %.S
 $(BUILD_OVMF_VARS): $(OVMF_VARS)
 	install -m 644 $< $@
 
+# if the disk does not exist, create it
+# this allows the partition guid to stay the same across rebuilds
+# also, it's faster, because sgdisk is slow
 $(DISK): $(EFI_EXEC) $(KERNEL) efi/startup.nsh
+ifeq ($(wildcard $(DISK)),)
 	dd if=/dev/zero of=$@ bs=512 count=93750 status=none
 	sgdisk --new 1:0:0 --typecode 1:ef00 \
 		--change-name 1:"EFI system partition" $@
+endif
 	sudo losetup --offset 1048576 --sizelimit 46934528 /dev/loop0 $@
+ifeq ($(wildcard $(DISK)),)
 	sudo mkdosfs -F 32 /dev/loop0
+endif
 	sudo mount /dev/loop0 /mnt
 	sudo cp $^ /mnt
 	sudo umount /mnt
@@ -178,7 +186,7 @@ tags: $(SOURCES) $(shell find . -name "*.h" -not -path "./cross/*")
 	ctags --exclude=cross/\* --exclude=\*.json --exclude=Makefile -R .
 
 .PHONY: all kernel-tree efi-tree test-tree kernel efi tests clean \
-	compile_commands.json qemu print-debug-execs $(FORCE)
+	compile_commands.json qemu-deps qemu print-debug-execs $(FORCE)
 
 all: tests kernel efi disk
 
@@ -214,7 +222,9 @@ compile_commands.json:
 	$(RM) $@
 	bear make all -j5
 
-qemu: $(BUILD_OVMF_VARS) $(DISK) efi
+qemu-deps: $(QEMUDEPS)
+
+qemu: qemu-deps
 	qemu-system-x86_64 $(QEMUFLAGS)
 
 # pass this information to gdb.py

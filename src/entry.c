@@ -1,3 +1,4 @@
+/* this module provides the kernel entry point */
 #include <stddef.h>
 #include "string.h"
 #include "opsys/x86.h"
@@ -22,11 +23,14 @@ void kernel_main(struct bootloader_data *bootloader_data_in)
     memset(__bss_start, 0, (size_t)_end - (size_t)__bss_start);
     bootloader_data = bootloader_data_in;
 
+    /* start off with some initial memory */
     for (uint64_t i = 0; i < bootloader_data->n_pages; ++i)
         free_physical_page((void*)((uint64_t)bootloader_data->free_memory
                                              + PAGE_SIZE * i));
 
-    void *new_stack = allocate_physical_page(APP_NORMAL);
+    void *new_stack;
+    if (!(new_stack = allocate_physical_page(APP_NORMAL)))
+        halt(); /* nomem */
     setup_new_stack(main2, new_stack);
     /* control transfers almost directly to main2 with new stack */
     __builtin_unreachable();
@@ -36,6 +40,8 @@ void main2(void)
 {
     page_table_t *kernel_address_space = new_address_space();
     set_cr3((uint64_t)kernel_address_space - bootloader_data->paddr_base);
-
-    halt();
+    BREAK();
+    uefi_call_wrapper(bootloader_data->RT->ResetSystem, 4,
+            EfiResetShutdown, EFI_SUCCESS, 0, NULL);
+    __builtin_unreachable();
 }

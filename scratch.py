@@ -2,6 +2,7 @@
 '''some tools that are nice to have open while debugging'''
 from pprint import pprint as pp
 import numpy
+import sys
 u64 = numpy.uint64
 i64 = numpy.int64
 u8 = numpy.uint8
@@ -60,3 +61,24 @@ def num_pages(base, size):
     base = u64(base)
     size = u64(size)
     return next_page(base + size - u64(1) - page_base(base)) // PAGE_SIZE
+
+
+def split_chunks(ll, n):
+    return [
+        ll[i * n:(i + 1) * n]
+        for i in range((len(ll) + n - 1) // n)
+    ]
+
+
+Boot0014 = '/sys/firmware/efi/efivars/Boot0014-8be4df61-93ca-11d2-aa0d-00e098032b8c'
+
+
+def chexdump(bs: bytes, file=sys.stdout) -> str:
+    '''convert bytes into a c hex array. print to file'''
+    print('{', file=file)
+
+    for line in split_chunks(bs, 16):
+        hexline = ', '.join(f'{num:#04x}' for num in line)
+        print(f'    {hexline},', file=file)
+
+    print('};', file=file)

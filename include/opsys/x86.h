@@ -11,6 +11,13 @@ pause(void)
     __asm volatile("pause");
 }
 
+__attribute__((always_inline))
+static inline void
+noop(void)
+{
+    __asm volatile("nop");
+}
+
 static inline void
 stosb(void *addr, int data, size_t cnt)
 {

@@ -10,6 +10,7 @@
 #include "opsys/virtual-memory.h"
 #include "opsys/bootloader_data.h"
 #include "opsys/kernel_main.h"
+#include "efivars.h"
 
 static const CHAR16 *const kernel_fname = L"\\opsys";
 static EFI_FILE_HANDLE RootDir = NULL;
@@ -31,13 +32,11 @@ efi_debug_entry(EFI_LOADED_IMAGE *LoadedImage)
     print_efer();
 }
 
-void* memset(void*, int, size_t);
 static void load_kernel(const Elf64_Ehdr**, const Elf64_Phdr**);
 static void print_program_headers(const Elf64_Ehdr*, const Elf64_Phdr*);
 static page_table_t*  prepare_boot_page_tables(
     EFI_MEMORY_DESCRIPTOR*, UINT64, struct bootloader_data*, const Elf64_Ehdr*,
     const Elf64_Phdr*);
-static UINT64 allocate_page(void);
 typedef void efi_main2_t(page_table_t*, struct bootloader_data*);
 static __noreturn efi_main2_t efi_main2;
 extern void setup_new_stack(page_table_t*, struct bootloader_data*,
@@ -50,6 +49,12 @@ static void print_memory_map(EFI_MEMORY_DESCRIPTOR*, UINT64);
 EFI_STATUS
 efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
 {
+    /* initializing the image:
+     * - get the LoadedImage protocol
+     * - print the image base
+     * - get the device path of the bootloader
+     * - open the root directory
+     */
     EFI_STATUS Status = EFI_SUCCESS;
     InitializeLib(ImageHandle, SystemTable);
     EFI_LOADED_IMAGE *LoadedImage;
@@ -58,6 +63,28 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
         EXIT_STATUS(Status, L"handle LoadedImageProtocol");
     efi_debug_entry(LoadedImage);
     BREAK();
+    EFI_DEVICE_PATH *LoadedImageDevp;
+    if (_EFI_ERROR(Status = uefi_call_wrapper(BS->HandleProtocol, 3,
+            LoadedImage->DeviceHandle, &DevicePathProtocol,
+            (void**)&LoadedImageDevp)))
+        EXIT_STATUS(Status, L"handle DevicePathProtocol");
+    CHAR16 *DevpText;
+    if (!(DevpText = DevicePathToStr(LoadedImageDevp)))
+        EXIT_STATUS(EFI_ABORTED, L"DevicePathToStr");
+    Print(L"LoadedImageDevp: %s\n", DevpText);
+    FreePool(DevpText);
+    print_file_path(LoadedImage->FilePath);
+    UINT16 FullDevpSize;
+    EFI_DEVICE_PATH *FullDevp =
+        AppendPath(LoadedImageDevp, LoadedImage->FilePath, &FullDevpSize);
+    CHAR16 *FullDevpText;
+    if (!(FullDevpText = DevicePathToStr(FullDevp)))
+        EXIT_STATUS(EFI_ABORTED, L"DevicePathToStr");
+    Print(L"FullDevp: %s\n", FullDevpText);
+    FreePool(FullDevpText);
+    enumerate_efi_vars(FullDevp, FullDevpSize);
+    FreePool(FullDevp);
+
     if (!(RootDir = LibOpenRoot(LoadedImage->DeviceHandle)))
         EXIT_STATUS(EFI_ABORTED, L"LibOpenRoot");
 
@@ -481,19 +508,6 @@ map_page(page_table_t *boot_page_table, UINT64 PPage, UINT64 VPage,
     if (*pte & PTE_P)
         EXIT_STATUS(EFI_ABORTED, L"remap 0x%lx", VPage);
     *pte = PPage | PTE_P | Flags;
-}
-
-/* allocate and zero one page of physical memory */
-static UINT64
-allocate_page(void)
-{
-    EFI_STATUS Status;
-    UINT64 Page;
-    if (_EFI_ERROR(Status = uefi_call_wrapper(BS->AllocatePages, 4,
-            AllocateAnyPages, EfiLoaderData, 1, &Page)))
-        EXIT_STATUS(Status, L"AllocatePages");
-    memset((void*)Page, 0, PAGE_SIZE);
-    return Page;
 }
 
 /* parse and complete filling out the memory map

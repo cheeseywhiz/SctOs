@@ -21,6 +21,30 @@ __noreturn void exit_status(const char*, int line, EFI_STATUS, const CHAR16*,
 /* convert 8-bit string to 16-bit string */
 CHAR16* a2u(const char*a);
 
+/* append device paths Devp1 and Devp2, returning a new Devp buffer that must be
+ * freed. Devp1 and Devp2 must both be valid, non-NULL device paths. */
+/* equivalent AppendDevicePath interface not provided by gnu-efi */
+EFI_DEVICE_PATH* AppendPath(EFI_DEVICE_PATH*, EFI_DEVICE_PATH*, UINT16*);
+
+/* uefi S3.1.3: not provided by gnu-efi */
+typedef struct _EFI_LOAD_OPTION {
+    UINT32 Attributes;
+    UINT16 FilePathListLength;
+    // byte packed buffer of the following:
+    // CHAR16 Description[]; /* NULL terminated */
+    // EFI_DEVICE_PATH FilePathList[];
+    // UINT8 OptionalData[];
+} __packed EFI_LOAD_OPTION;
+
+#define LOAD_OPTION_ACTIVE 0x00000001
+
+/* not standard, just handy */
+#define EFI_DEVICE_PATH_LENGTH(devp) \
+    (UINT16)(((devp).Length[1] << 8) | (devp).Length[0])
+
+/* allocate and zero one page of physical memory */
+UINT64 allocate_page(void);
+
 #define _ERROR_STR(suffix) [(EFI_ ## suffix) & ~EFI_ERROR_MASK] = (L ## #suffix)
 #define EFI_ERROR_STR(status) (efi_error_str[(status) & ~EFI_ERROR_MASK])
 

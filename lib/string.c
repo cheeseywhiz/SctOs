@@ -2,6 +2,7 @@
  * general memory and string manipulation standard functions */
 #include <stddef.h>
 #include "string.h"
+#include "util.h"
 #include "opsys/x86.h"
 
 void*
