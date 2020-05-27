@@ -9,14 +9,19 @@
 /* gnu-efi does not provide efi_main prototype for apps */
 EFI_STATUS efi_main(EFI_HANDLE, EFI_SYSTEM_TABLE*);
 
+/* https://stackoverflow.com/a/3291315 */
+#define __(s) (L ## s)
+/* turn a string literal into a long string literal */
+#define _(s) __(s)
+
 /* print a message to console and print the error status */
-__noreturn void exit_status(const char*, int line, EFI_STATUS, const CHAR16*,
+__noreturn void exit_status(const CHAR16*, int line, EFI_STATUS, const CHAR16*,
                             ...);
 #define EXIT_STATUS(status, fmt, ...) \
-    exit_status(__FILE__, __LINE__, (status), (fmt), ##__VA_ARGS__)
+    exit_status(_(__FILE__), __LINE__, (status), (fmt), ##__VA_ARGS__)
 #define EFI_ASSERT(cond) \
     if (!(cond)) \
-        EXIT_STATUS(EFI_ABORTED, L"Failed assertion: %s", (L ## #cond))
+        EXIT_STATUS(EFI_ABORTED, L"Failed assertion: %s", _(#cond))
 
 /* convert 8-bit string to 16-bit string */
 CHAR16* a2u(const char*a);
@@ -42,10 +47,14 @@ typedef struct _EFI_LOAD_OPTION {
 #define EFI_DEVICE_PATH_LENGTH(devp) \
     (UINT16)(((devp).Length[1] << 8) | (devp).Length[0])
 
+/* create a byte-packed EFI_LOAD_OPTION buffer according to uefi spec */
+EFI_LOAD_OPTION* make_load_option(const EFI_LOAD_OPTION*, const CHAR16*,
+                                  EFI_DEVICE_PATH*, UINT16, UINT64*);
+
 /* allocate and zero one page of physical memory */
 UINT64 allocate_page(void);
 
-#define _ERROR_STR(suffix) [(EFI_ ## suffix) & ~EFI_ERROR_MASK] = (L ## #suffix)
+#define _ERROR_STR(suffix) [(EFI_ ## suffix) & ~EFI_ERROR_MASK] = _(#suffix)
 #define EFI_ERROR_STR(status) (efi_error_str[(status) & ~EFI_ERROR_MASK])
 
 /* uefi table 258 page 2210 / gnu-efi/inc/efierr.h */
@@ -85,7 +94,7 @@ static const CHAR16 *const efi_error_str[] = {
 };
 
 /* uefi AllocatePages related definitions page 162 */
-#define _MT_STR(type) [Efi ## type] = (L ## #type)
+#define _MT_STR(type) [Efi ## type] = _(#type)
 static const CHAR16 *const efi_memory_type_str[] = {
     _MT_STR(ReservedMemoryType),
     _MT_STR(LoaderCode),

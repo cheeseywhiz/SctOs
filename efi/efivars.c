@@ -64,28 +64,20 @@ enumerate_efi_vars(EFI_DEVICE_PATH *BootDevp, UINT16 DevpSize)
 static void
 set_boot_variables(EFI_DEVICE_PATH *BootDevp, UINT16 DevpSize)
 {
-    EFI_LOAD_OPTION LoadOption = { LOAD_OPTION_ACTIVE, DevpSize };
-    static const CHAR16 Description[] = L"opsys loader";
-    UINT64 DescriptionSize = StrSize(Description);
-    UINT64 LoadOptionSize = sizeof(LoadOption) + DescriptionSize + DevpSize;
-    void *buf;
-    if (!(buf = AllocatePool(LoadOptionSize)))
-        EXIT_STATUS(EFI_ABORTED, L"AllocatePool");
-    void *end = buf;
-    memcpy(end, &LoadOption, sizeof(LoadOption));
-    end = (void*)((UINT64)end + sizeof(LoadOption));
-    memcpy(end, Description, DescriptionSize);
-    end = (void*)((UINT64)end + DescriptionSize);
-    memcpy(end, BootDevp, DevpSize);
+    EFI_LOAD_OPTION Header = { LOAD_OPTION_ACTIVE, DevpSize };
+    UINT64 LoadOptionSize;
+    EFI_LOAD_OPTION *LoadOption = make_load_option(
+        &Header, L"opsys loader", BootDevp, DevpSize, &LoadOptionSize);
     EFI_STATUS Status;
     if (_EFI_ERROR(Status = uefi_call_wrapper(RT->SetVariable, 5,
             L"Boot0004", &gEfiGlobalVariableGuid,
             EFI_VARIABLE_BOOTSERVICE_ACCESS | EFI_VARIABLE_RUNTIME_ACCESS | 
             EFI_VARIABLE_NON_VOLATILE,
-            LoadOptionSize, buf)))
+            LoadOptionSize, LoadOption)))
         EXIT_STATUS(Status, L"SetVariable");
-    FreePool(buf);
-    /* dummy option, opsys loader, UEFI shell */
+    FreePool(LoadOption);
+    /* dummy option, opsys loader, UEFI shell. firmware will append other active
+     * options not listed here. */
     UINT16 BootOrder[] = { 0, 4, 3 };
     if (_EFI_ERROR(Status = uefi_call_wrapper(RT->SetVariable, 5,
             L"BootOrder", &gEfiGlobalVariableGuid,

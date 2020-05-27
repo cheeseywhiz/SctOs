@@ -6,18 +6,17 @@
 #include "util.h"
 
 void
-exit_status(const char *file, int line, EFI_STATUS Status, const CHAR16 *fmt,
+exit_status(const CHAR16 *file, int line, EFI_STATUS Status, const CHAR16 *fmt,
             ...)
 {
-    Print(L"%s:%d: ", a2u(file), line);
+    Print(L"%s:%d: ", file, line);
     va_list ap;
     va_start(ap, fmt);
     VPrint(fmt, ap);
     va_end(ap);
     Print(L"\n%d %s\n", Status, EFI_ERROR_STR(Status));
     Exit(Status, 0, NULL);
-    while (TRUE)
-        ;
+    __builtin_unreachable();
 }
 
 /* convert 8-bit string to 16-bit string */
@@ -38,6 +37,7 @@ static UINT16 get_devp_size(EFI_DEVICE_PATH*);
 EFI_DEVICE_PATH*
 AppendPath(EFI_DEVICE_PATH *Devp1, EFI_DEVICE_PATH *Devp2, UINT16 *NewSize)
 {
+    EFI_ASSERT(Devp1 != NULL && Devp2 != NULL);
     /* this variable was reverse engineered from edk2 */
     static const EFI_DEVICE_PATH EndOfDevicePath = { 0x7f, 0xff, { 4, 0 } };
     UINT64 p1Size = get_devp_size(Devp1), p2Size = get_devp_size(Devp2);
@@ -67,6 +67,25 @@ get_devp_size(EFI_DEVICE_PATH *Devp)
     }
 
     return Size;
+}
+
+/* create a byte-packed EFI_LOAD_OPTION buffer according to uefi spec */
+EFI_LOAD_OPTION*
+make_load_option(const EFI_LOAD_OPTION *Header, const CHAR16 *Description,
+                 EFI_DEVICE_PATH *Devp, UINT16 DevpSize, UINT64 *LoadOptionSize)
+{
+    UINT64 DescriptionSize = StrSize(Description);
+    *LoadOptionSize = sizeof(*Header) + DescriptionSize + DevpSize;
+    void *buf;
+    if (!(buf = AllocatePool(*LoadOptionSize)))
+        EXIT_STATUS(EFI_ABORTED, L"AllocatePool");
+    void *end = buf;
+    memcpy(end, Header, sizeof(*Header));
+    end = (void*)((UINT64)end + sizeof(*Header));
+    memcpy(end, Description, DescriptionSize);
+    end = (void*)((UINT64)end + DescriptionSize);
+    memcpy(end, Devp, DevpSize);
+    return buf;
 }
 
 /* allocate and zero one page of physical memory */
