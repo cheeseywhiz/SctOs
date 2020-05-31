@@ -7,7 +7,7 @@
 .global setup_new_stack
 .type setup_new_stack, @function
 setup_new_stack:
-    lea PAGE_SIZE(%rcx), %rsp
-    xor %rbp, %rbp
-    push %rbp
-    jmp *%rdx
+        lea     PAGE_SIZE(%rcx), %rsp
+        xor     %rbp, %rbp
+        push    %rbp
+        jmp     *%rdx
