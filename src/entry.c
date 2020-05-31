@@ -6,14 +6,38 @@
 #include "opsys/kernel_main.h"
 #include "opsys/virtual-memory.h"
 #include "virtual-memory.h"
+#include "stubs.h"
 
 /* set during kernel boot. */
 struct bootloader_data *bootloader_data __ro_after_init;
 /* linker script variables */
 extern char __bss_start[], _end[];
-typedef void main2_t(void);
-extern void setup_new_stack(main2_t, void*);
-__noreturn main2_t main2;
+static __noreturn main2_t main2;
+
+static uint64_t gdt[] = {
+    /* dummy */
+    0,
+    /* kernel code (implicit base=0 and limit=0xfffff) */
+    SEGDESC_SET_DPL(0)
+        /* code/data seg, 64-bit code seg, present, 4kb granularity */
+        | SEGDESC_S | SEGDESC_L | SEGDESC_P | SEGDESC_G
+        /* executable+read */
+        | SDT_X | SDT_XR
+    ,
+    /* kernel data */
+    SEGDESC_SET_DPL(0)
+        /* code/data seg, present, 4kb granularity */
+        | SEGDESC_S | SEGDESC_P | SEGDESC_G
+        /* read+write */
+        | SDT_RW
+    ,
+};
+
+enum gdt_index {
+    GDTI_DUMMY,
+    GDTI_KERNEL_CODE,
+    GDTI_KERNEL_DATA,
+};
 
 /* uefi enters _start in long mode with the kernel mapped to the higher half and
  * bootloader_data mapped to the physical memory region. */
@@ -40,8 +64,10 @@ void main2(void)
 {
     page_table_t *kernel_address_space = new_address_space();
     set_cr3((uint64_t)kernel_address_space - bootloader_data->paddr_base);
+    set_gdt(gdt, ARRAY_LENGTH(gdt));
+    init_segment_selectors(GDTI_KERNEL_DATA, GDTI_KERNEL_CODE);
     BREAK();
     uefi_call_wrapper(bootloader_data->RT->ResetSystem, 4,
-            EfiResetShutdown, EFI_SUCCESS, 0, NULL);
+        EfiResetShutdown, EFI_SUCCESS, 0, NULL);
     __builtin_unreachable();
 }

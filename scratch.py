@@ -13,6 +13,8 @@ p1GB = p1KB * p1MB
 n1GB = u64(-p1GB)
 KERNEL_BASE = n1GB
 
+p4KB = u64(4) * p1KB
+
 
 def to_base(num, base=1024):
     '''convert a number to its big endian representation in any base'''
@@ -40,7 +42,8 @@ def in_range(base, size, num):
 
 
 # virtual memory
-PAGE_SIZE = u64(4 * p1KB)
+PAGE_SIZE = p4KB
+
 
 def page_base(addr):
     addr = u64(addr)

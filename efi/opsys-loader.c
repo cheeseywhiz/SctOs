@@ -20,8 +20,6 @@ static void print_cr0(void);
 static void print_cr4(void);
 static void print_efer(void);
 
-/* gdb.py sets this function as a breakpoint. then, set a command to run
- * "finish" upon reaching this function. */
 static void
 efi_debug_entry(EFI_LOADED_IMAGE *LoadedImage)
 {

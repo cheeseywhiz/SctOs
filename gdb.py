@@ -4,6 +4,7 @@ import os
 import sys
 import subprocess
 import argparse
+from scratch import KERNEL_BASE
 
 
 def main(argv):
@@ -45,14 +46,13 @@ def main(argv):
         parts = ['add-symbol-file', kernel]
         cmd = (f'objdump -h {kernel}'
                ' | awk \'/^\\s*[0-9]/ { print $2 " " $4 }\'')
-        kernel_base = 0xffffffffc0000000
 
         for line in system(cmd).splitlines():
             section, addr = line.split()
             addr = str_hex_to_int(addr)
             if not addr:
                 continue
-            addr += kernel_base
+            addr += int(KERNEL_BASE)
 
             if section == '.text':
                 parts.insert(2, hex(addr))

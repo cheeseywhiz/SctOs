@@ -161,3 +161,79 @@ enum ia32_efer_flags {
     EFER_LMA     = 1 << 10, /* long mode active */
     EFER_NXE     = 1 << 11, /* NX bit enable */
 };
+
+/* x86-64-system S3.4.5 */
+/* size of the segment */
+#define SEGDESC_GET_LIMIT(d) \
+    (uint32_t)((((d) & (0xfUL << 48)) >> 32) | \
+               ((d) & 0xffff))
+#define SEGDESC_SET_LIMIT(ll) \
+    ((((ll) & (0xfUL << 16)) << 32) | \
+     ((ll) & 0xffff))
+/* base address of the segment */
+#define SEGDESC_GET_BASE(d) \
+    ((((d) & (0xffUL << 56)) >> 24) | \
+     (((d) & (0xffffffUL << 16)) >> 16))
+#define SEGDESC_SET_BASE(b) \
+    ((((b) & (0xffUL << 24)) << 32) | \
+     (((b) & 0xffffff) << 16))
+/* descriptor privilege level */
+#define SEGDESC_GET_DPL(d) \
+    (((d) & (0x3UL << 45)) >> 45)
+#define SEGDESC_SET_DPL(dpl) \
+    (uint64_t)((uint64_t)((dpl) & 0x3) << 45)
+
+#define SEGDESC_A   (1UL << 40) /* accessed (formally part of type) */
+#define SEGDESC_S   (1UL << 44) /* true: code/data; false: system */
+#define SEGDESC_P   (1UL << 47) /* present */
+#define SEGDESC_AVL (1UL << 52) /* available for os use */
+#define SEGDESC_L   (1UL << 53) /* true: 64-bit code segment */
+#define SEGDESC_DB  (1UL << 54) /* D/B flag (varies) */
+#define SEGDESC_D SEGDESC_DB
+#define SEGDESC_B SEGDESC_DB
+#define SEGDESC_G   (1UL << 55) /* true: 4kb, false: byte granularity */
+
+/* code/data segment descriptor type */
+/* if not SDT_X */
+#define SDT_RW   (1UL << 41) /* true: read/write; false: read only */
+#define SDT_DOWN (1UL << 42) /* true: expands down; false: expands up */
+/* if SDT_X */
+#define SDT_X    (1UL << 43) /* executable segment */
+#define SDT_XR   (1UL << 41) /* true: executable/read; false: execute only */
+#define SDT_CONF (1UL << 42) /* conforming (can jump into higher-privileged
+                              * segment while maintaining current privilege
+                              * level) */
+
+/* system segment descriptor type */
+#define SDT_MASK (0xfUL << 40)
+#define SDT_LDT  (2UL << 40)  /* local descriptor table */
+#define SDT_TSSA (9UL << 40)  /* available task segment selector */
+#define SDT_TSSB (11UL << 40) /* busy task segment selector */
+#define SDT_CALL (12UL << 40) /* call gate */
+#define SDT_INTR (14UL << 40) /* interrupt gate */
+#define SDT_TRAP (15UL << 40) /* trap gate */
+
+/* x86-64-system figure 3-11 */
+struct pseudo_descriptor {
+    uint16_t limit;
+    uint64_t *base;
+} __packed;
+
+static inline uint64_t*
+get_gdt(uint16_t *length)
+{
+    struct pseudo_descriptor gdtr;
+    __asm__ ("sgdt %0" : "=m"(gdtr));
+    if (length)
+        *length = (uint16_t)((size_t)(gdtr.limit + 1) / sizeof(*gdtr.base));
+    return gdtr.base;
+}
+
+static inline void
+set_gdt(uint64_t *gdt, uint16_t length)
+{
+    struct pseudo_descriptor gdtr;
+    gdtr.limit = (uint16_t)((sizeof(*gdtr.base) * length) - 1);
+    gdtr.base = gdt;
+    __asm__ ("lgdt %0" : "=m"(gdtr));
+}

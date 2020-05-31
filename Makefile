@@ -27,11 +27,13 @@ KERNEL_CPPFLAGS += -D_KERNEL
 ifneq ($(KERNEL_DEBUG),)
 KERNEL_CPPFLAGS += -D_KERNEL_DEBUG=$(KERNEL_DEBUG)
 KERNEL_CFLAGS += -O0 -g3
+KERNEL_ASFLAGS += -g3
 endif
 KERNEL_LDFLAGS += -nostdlib -static-pie -Wl,-static,-pie,--no-dynamic-linker \
 	-Wl,-z,separate-code,-z,max-page-size=0x1000,-z,noexecstack,-z,relro \
 	-Wl,-e,kernel_main
 KERNEL_LDLIBS := -lgcc
+# TODO: patch gnu-efi to remove these -Wno- flags
 EFI_CFLAGS += -mno-red-zone -mno-avx -fshort-wchar -fno-strict-aliasing \
 	-ffreestanding -fno-stack-protector -fno-merge-constants -fPIC \
 	-Wno-write-strings -Wno-redundant-decls -Wno-strict-prototypes
@@ -118,9 +120,12 @@ DEPS := $(KERNEL_DEPS) $(EFI_DEPS) $(TEST_DEPS)
 $(KERNEL): $(KERNEL_LDSCRIPT) $(KERNEL_OBJECTS)
 	$(KERNEL_CC) $(CFLAGS) $(KERNEL_CFLAGS) $(KERNEL_LDFLAGS) -o $@ \
 		$(KERNEL_OBJECTS) $(KERNEL_LDLIBS)
+ifneq ($(KERNEL_DEBUG),)
+	@echo kernel debug ready
+endif
 
 $(BUILD_KERNEL)/%.o: %.S
-	$(KERNEL_CC) $(CPPFLAGS) $(KERNEL_CPPFLAGS) -c -o $@ $<
+	$(KERNEL_CC) $(CPPFLAGS) $(KERNEL_CPPFLAGS) $(KERNEL_ASFLAGS) -c -o $@ $<
 
 $(BUILD_KERNEL)/%.o: %.c
 	$(KERNEL_CC) $(CPPFLAGS) $(KERNEL_CPPFLAGS) $(CFLAGS) $(KERNEL_CFLAGS) \
@@ -133,6 +138,9 @@ $(EFI_EXEC): $(EFI_SO)
 $(EFI_DEBUG_EXEC): $(EFI_SO)
 	objcopy -j .text -j .sdata -j .data -j .dynamic -j .dynsym -j .rel* \
 		-j .debug* --target=efi-app-x86_64 $< $@
+ifneq ($(EFI_DEBUG),)
+	@echo efi debug ready
+endif
 
 $(EFI_SO): $(EFI_CRT) $(EFI_LDSCRIPT) $(EFI_OBJECTS)
 	$(CC) $(EFI_LDFLAGS) -o $@ $(EFI_CRT) $(EFI_OBJECTS) $(EFI_LDLIBS)
@@ -223,6 +231,9 @@ compile_commands.json:
 	bear make all -j5
 
 qemu-deps: $(QEMUDEPS)
+ifneq ($(EFI_DEBUG)$(KERNEL_DEBUG),)
+	@echo qemu ready
+endif
 
 qemu: qemu-deps
 	qemu-system-x86_64 $(QEMUFLAGS)
