@@ -66,6 +66,11 @@ page_table_t* new_address_space(void)
                 || Memory->Type == EfiMemoryMappedIO
                 || Memory->Type == EfiMemoryMappedIOPortSpace)
             flags |= PTE_RW;
+        /* XXX: EfiRuntimeServicesCode needs RW?? this doesn't seem right but by
+         * trial and error, runtime services code also contains r/w code
+         * (specifically, the ResetSystem function) */
+        if (Memory->Type == EfiRuntimeServicesCode)
+            flags |= PTE_RW;
         map_range(address_space, Memory->PhysicalStart, Memory->VirtualStart,
                   Memory->NumberOfPages, flags);
     }

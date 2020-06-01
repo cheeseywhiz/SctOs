@@ -4,15 +4,13 @@
 #include <stdint.h>
 #include "util.h"
 
-__attribute__((always_inline))
-static inline void
+static __always_inline void
 pause(void)
 {
     __asm volatile("pause");
 }
 
-__attribute__((always_inline))
-static inline void
+static __always_inline void
 noop(void)
 {
     __asm volatile("nop");
@@ -235,5 +233,105 @@ set_gdt(uint64_t *gdt, uint16_t length)
     struct pseudo_descriptor gdtr;
     gdtr.limit = (uint16_t)((sizeof(*gdtr.base) * length) - 1);
     gdtr.base = gdt;
-    __asm__ ("lgdt %0" : "=m"(gdtr));
+    __asm__ ("lgdt %0" :: "m"(gdtr));
+}
+
+#define N_INTERRUPTS 256
+typedef uint64_t idt_entry_t[2];
+typedef idt_entry_t idt_t[N_INTERRUPTS];
+
+static inline void
+set_idt(idt_t idt)
+{
+    struct pseudo_descriptor idtr;
+    idtr.limit = sizeof(idt_t) - 1;
+    idtr.base = (uint64_t*)idt;
+    __asm__ __volatile__("lidt %0" :: "m"(idtr));
+}
+
+/* x86-64-system table 6-1 */
+enum exception_number {
+    EXC_DE, /* divide error */
+    EXC_DB, /* debug exception */
+    EXC_NMI, /* non-maskable external interrupt */
+    EXC_BP, /* breakpoint */
+    EXC_OF, /* overflow */
+    EXC_BR, /* bound range exceeded */
+    EXC_UD, /* undefined opcode */
+    EXC_NM, /* no math coprocessor */
+    EXC_DF, /* double fault */
+    EXC_RES9, /* reserved */
+    EXC_TS, /* invalid TSS */
+    EXC_NP, /* segment not present */
+    EXC_SS, /* stack segment fault */
+    EXC_GP, /* general protection fault */
+    EXC_PF, /* page fault */
+    EXC_RES15, /* reserved */
+    EXC_MF, /* math fault */
+    EXC_AC, /* alignment check */
+    EXC_MC, /* machine check */
+    EXC_XM, /* SIMD floating point exception */
+    EXC_VE, /* virtualization exception */
+    EXC_RES21, /* reserved... */
+    EXC_RES22,
+    EXC_RES23,
+    EXC_RES24,
+    EXC_RES25,
+    EXC_RES26,
+    EXC_RES27,
+    EXC_RES28,
+    EXC_RES29,
+    EXC_RES30,
+    EXC_RES31,
+};
+
+/* interrupts >= 32 are user defined */
+#define EXC_IS_EXCEPTION(num) ((num) < 32)
+/* error codes refer to a descriptor, or an address for PF */
+#define EXC_HAS_ERROR_CODE(num) \
+    ((num) == EXC_DF || (num) == EXC_TS || (num) == EXC_NP || \
+     (num) == EXC_SS || (num) == EXC_GP || (num) == EXC_PF || (num) == EXC_AC)
+
+/* registers in the order of pushaq */
+struct x86_64_registers {
+    uint64_t rdi;
+    uint64_t rsi;
+    uint64_t rbp;
+    uint64_t rsp;
+    uint64_t rbx;
+    uint64_t rdx;
+    uint64_t rcx;
+    uint64_t rax;
+    uint64_t r8;
+    uint64_t r9;
+    uint64_t r10;
+    uint64_t r11;
+    uint64_t r12;
+    uint64_t r13;
+    uint64_t r14;
+    uint64_t r15;
+};
+
+/* prepared by interrupt vector functions and interrupt handler stub */
+struct interrupt_frame {
+    struct x86_64_registers reg;
+    uint64_t interrupt_number;
+    uint64_t error_code;
+    uint64_t rip;
+    uint64_t cs;
+    uint64_t rflags;
+    uint64_t rsp;
+    uint64_t ss;
+};
+
+static __always_inline void
+interrupt(const uint8_t num)
+{
+    __asm__ __volatile__("int %0" :: "i"(num));
+}
+
+static __always_inline void
+int3(void)
+{
+    __asm__ __volatile__("int3");
 }

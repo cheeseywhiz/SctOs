@@ -1,8 +1,8 @@
 # test build is in tree, kernel and efi loader are out of tree
-BUILD_KERNEL ?= build/kernel
-BUILD_EFI ?= build/efi
+BUILD_KERNEL ?= ./build/kernel
+BUILD_EFI ?= ./build/efi
 BUILD_TEST ?= .
-BUILD_TREE += build
+BUILD_TREE += ./build
 
 OVMF_CODE := /usr/share/edk2-ovmf/x64/OVMF_CODE.fd
 OVMF_VARS := /usr/share/edk2-ovmf/x64/OVMF_VARS.fd
@@ -22,7 +22,7 @@ CFLAGS += -Werror -Wall -Wextra -pedantic -Wshadow -Wpointer-arith \
 	-Wcast-align -Wwrite-strings -Wmissing-prototypes -Wmissing-declarations \
 	-Wredundant-decls -Wnested-externs -Winline -Wno-long-long -Wconversion \
 	-Wstrict-prototypes
-KERNEL_CFLAGS += -ffreestanding -fPIE
+KERNEL_CFLAGS += -ffreestanding -fPIE -mno-red-zone -mno-mmx -mno-sse -mno-sse2
 KERNEL_CPPFLAGS += -D_KERNEL
 ifneq ($(KERNEL_DEBUG),)
 KERNEL_CPPFLAGS += -D_KERNEL_DEBUG=$(KERNEL_DEBUG)
@@ -71,17 +71,22 @@ QEMUFLAGS += -S
 endif
 
 KERNEL_DIRS := lib src
+KERNEL_ASM_GEN := $(BUILD_KERNEL)/gen/vectors.S
+KERNEL_GEN := $(KERNEL_ASM_GEN)
 KERNEL_ASM_SOURCES := $(shell find $(KERNEL_DIRS) -name "*.S")
 KERNEL_C_SOURCES := $(shell find $(KERNEL_DIRS) -name "*.c")
 KERNEL_SOURCES := $(KERNEL_ASM_SOURCES) $(KERNEL_C_SOURCES)
+KERNEL_SOURCES += $(KERNEL_ASM_GEN)
 KERNEL_OBJECTS := $(KERNEL_ASM_SOURCES:%.S=%.o) $(KERNEL_C_SOURCES:%.c=%.o)
 KERNEL_OBJECTS := $(addprefix $(BUILD_KERNEL)/, $(KERNEL_OBJECTS))
+KERNEL_OBJECTS += $(KERNEL_ASM_GEN:%.S=%.o)
 KERNEL_DEPS := $(KERNEL_ASM_SOURCES:%.S=%.d) $(KERNEL_C_SOURCES:%.c=%.d)
 KERNEL_DEPS := $(addprefix $(BUILD_KERNEL)/, $(KERNEL_DEPS))
+KERNEL_DEPS += $(KERNEL_ASM_GEN:%.S=%.d)
 KERNEL := $(BUILD_KERNEL)/opsys
-KERNEL_TREE := $(shell find $(KERNEL_DIRS) -type d)
+KERNEL_TREE := $(shell find $(KERNEL_DIRS) -type d) gen
 KERNEL_TREE := $(BUILD_KERNEL) $(addprefix $(BUILD_KERNEL)/, $(KERNEL_TREE))
-$(KERNEL) $(KERNEL_OBJECTS): | kernel-tree
+$(KERNEL) $(KERNEL_OBJECTS) $(KERNEL_ASM_GEN): | kernel-tree
 
 EFI_C_SOURCES := $(shell find efi -name "*.c") lib/readelf.c lib/opsys/x86.c
 EFI_ASM_SOURCES := $(shell find efi -name "*.S")
@@ -103,11 +108,13 @@ TEST_DIRS := test
 TEST_SOURCES := $(shell find $(TEST_DIRS) -name "*.c")
 TEST_OBJECTS := $(addprefix $(BUILD_TEST)/, $(TEST_SOURCES:%.c=%.o))
 TEST_DEPS := $(addprefix $(BUILD_TEST)/, $(TEST_SOURCES:%.c=%.d))
-TEST_EXECS := $(addprefix $(BUILD_TEST)/, readelf small-exec introspect)
+TEST_EXECS := $(addprefix $(BUILD_TEST)/, \
+	readelf small-exec introspect gen-vectors)
 TEST_TREE := $(shell find $(TEST_DIRS) -type d)
 TEST_TREE := $(BUILD_TEST) $(addprefix $(BUILD_TEST)/, $(TEST_TREE))
 $(TEST_EXECS) $(TEST_OBJECTS): | test-tree
 
+GEN := $(KERNEL_GEN)
 SOURCES := $(KERNEL_SOURCES) $(EFI_SOURCES) $(TEST_SOURCES)
 OBJECTS := $(KERNEL_OBJECTS) $(EFI_OBJECTS) $(TEST_OBJECTS)
 BUILD_TREE += $(KERNEL_TREE) $(EFI_TREE) $(TEST_TREE)
@@ -128,6 +135,16 @@ $(BUILD_KERNEL)/%.o: %.S
 	$(KERNEL_CC) $(CPPFLAGS) $(KERNEL_CPPFLAGS) $(KERNEL_ASFLAGS) -c -o $@ $<
 
 $(BUILD_KERNEL)/%.o: %.c
+	$(KERNEL_CC) $(CPPFLAGS) $(KERNEL_CPPFLAGS) $(CFLAGS) $(KERNEL_CFLAGS) \
+		-c -o $@ $<
+
+$(BUILD_KERNEL)/gen/vectors.S: $(BUILD_TEST)/gen-vectors
+	$(BUILD_TEST)/gen-vectors > $@
+
+$(BUILD_KERNEL)/gen/%.o: $(BUILD_KERNEL)/gen/%.S
+	$(KERNEL_CC) $(CPPFLAGS) $(KERNEL_CPPFLAGS) $(KERNEL_ASFLAGS) -c -o $@ $<
+
+$(BUILD_KERNEL)/gen/%.o: $(BUILD_KERNEL)/gen/%.c
 	$(KERNEL_CC) $(CPPFLAGS) $(KERNEL_CPPFLAGS) $(CFLAGS) $(KERNEL_CFLAGS) \
 		-c -o $@ $<
 
@@ -186,8 +203,11 @@ $(BUILD_TEST)/small-exec: test/small-exec.S
 	-$(RM) $@.o
 
 $(BUILD_TEST)/introspect: $(addprefix $(BUILD_KERNEL)/, lib/elf.o)
-$(BUILD_TEST)/introspect: $(addprefix $(BUILD_TEST)/, test/glibc-readelf.o \
-		test/print-elf.o test/introspect.o)
+$(BUILD_TEST)/introspect: $(addprefix $(BUILD_TEST)/, \
+		test/glibc-readelf.o test/print-elf.o test/introspect.o)
+	$(CC) $(CFLAGS) $(TEST_CFLAGS) $(TEST_LDFLAGS) -o $@ $^
+
+$(BUILD_TEST)/gen-vectors: $(addprefix $(BUILD_TEST)/, test/gen-vectors.o)
 	$(CC) $(CFLAGS) $(TEST_CFLAGS) $(TEST_LDFLAGS) -o $@ $^
 
 tags: $(SOURCES) $(shell find . -name "*.h" -not -path "./cross/*")
@@ -219,7 +239,7 @@ tests: $(TEST_EXECS)
 
 # remove files, then do a post-order removal of the build tree
 clean:
-	@-$(RM) $(OBJECTS) $(DEPS) $(KERNEL) $(EFI_EXECS) $(TEST_EXECS) \
+	@-$(RM) $(OBJECTS) $(GEN) $(DEPS) $(KERNEL) $(EFI_EXECS) $(TEST_EXECS) \
 		$(BUILD_OVMF_VARS) $(DISK) vgcore.* perf.*
 	@for f in $(shell echo $(BUILD_TREE) | tr ' ' '\n' | sort -r); do \
 		rmdir $$f 1>/dev/null 2>&1 || true; \

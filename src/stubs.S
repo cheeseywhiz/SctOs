@@ -1,4 +1,5 @@
 #include "opsys/virtual-memory.h"
+#include "asm-util.h"
 
 .section .text
 
@@ -37,3 +38,15 @@ init_segment_selectors:
         push    %rsi            /* cs */
         push    %rcx            /* rip */
         iretq
+
+/* this stub is jumped into by an individual interrupt vector (which also pushed
+ * its interrupt number) */
+.global interrupt_handler_stub
+interrupt_handler_stub:
+        pushaq
+        mov     %rsp, %rdi      /* struct interrupt_frame has been constructed
+                                 * on the stack */
+        call    interrupt_handler
+        popaq
+        add     $16, %rsp       /* pop int number & error code/zero */
+        iretq   /* return address & stack have been prepared by cpu */

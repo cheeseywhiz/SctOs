@@ -6,6 +6,7 @@ compile_commands.json
 *.d
 readelf
 small-exec
+gen-vectors
 vgcore.*
 perf.*
 introspect
