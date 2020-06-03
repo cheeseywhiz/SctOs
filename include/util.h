@@ -5,6 +5,7 @@
 #define __weak __attribute__((weak))
 #undef __always_inline
 #define __always_inline inline __attribute__((always_inline))
+#define __stack_protector __attribute__((stack_protect))
 #define __unused __attribute__((unused))
 #define __malloc __attribute__((malloc))
 #define __noreturn __attribute__((noreturn))

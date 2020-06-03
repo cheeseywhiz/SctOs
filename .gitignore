@@ -1,5 +1,5 @@
 .clangd
-cross
+.cross
 build
 compile_commands.json
 *.o

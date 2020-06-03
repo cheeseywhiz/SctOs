@@ -1,9 +1,11 @@
 #include <stdint.h>
 #include "opsys/x86.h"
+#include "opsys/virtual-memory.h"
 #include "util.h"
 #include "gdt.h"
 
-uint64_t gdt[] = {
+/* alignment not required but it might make debugging easier in the future */
+uint64_t gdt[] __aligned(PAGE_SIZE) = {
     /* dummy */
     0,
     /* kernel code (implicit base=0 and limit=0xfffff) */

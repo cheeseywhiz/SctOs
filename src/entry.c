@@ -1,14 +1,14 @@
 /* this module provides the kernel entry point */
 #include <stddef.h>
-#include "string.h"
+#include <stdint.h>
 #include "opsys/x86.h"
 #include "opsys/bootloader_data.h"
 #include "opsys/kernel_main.h"
 #include "opsys/virtual-memory.h"
+#include "util.h"
 #include "virtual-memory.h"
 #include "stubs.h"
-#include "interrupts.h"
-#include "gdt.h"
+#include "x86.h"
 
 /* set during kernel boot. */
 struct bootloader_data *bootloader_data __ro_after_init;
@@ -23,6 +23,8 @@ void kernel_main(struct bootloader_data *bootloader_data_in)
     /* clear bss */
     memset(__bss_start, 0, (size_t)_end - (size_t)__bss_start);
     bootloader_data = bootloader_data_in;
+
+    init_cpu();
 
     /* start off with some initial memory */
     for (uint64_t i = 0; i < bootloader_data->n_pages; ++i)
@@ -41,10 +43,7 @@ void main2(void)
 {
     page_table_t *kernel_address_space = new_address_space();
     set_cr3((uint64_t)kernel_address_space - bootloader_data->paddr_base);
-    set_gdt(gdt, gdt_length);
-    init_segment_selectors(GDTI_KERNEL_DATA, GDTI_KERNEL_CODE);
-    install_idt();
-    interrupt(69);
+    interrupt(40);
     int3();
     BREAK();
     uefi_call_wrapper(bootloader_data->RT->ResetSystem, 4,

@@ -1,5 +1,6 @@
 /* copied from xv6 */
 /* Routines to let C code use special x86 instructions. */
+#pragma once
 #include <stddef.h>
 #include <stdint.h>
 #include "util.h"
@@ -158,6 +159,35 @@ enum ia32_efer_flags {
     EFER_LME     = 1 <<  8, /* long mode enable */
     EFER_LMA     = 1 << 10, /* long mode active */
     EFER_NXE     = 1 << 11, /* NX bit enable */
+};
+
+/* x86-64-msr page 2-4 */
+#define IA32_APIC_BASE 0x1b
+enum ia32_apic_base_flags {
+    APIC_BASE_BSP    = 1 << 8,  /* processor is bootstrap processor? */
+    APIC_BASE_x2APIC = 1 << 9,  /* x2APIC enable */
+    APIC_BASE_GLOBAL = 1 << 11, /* global enable */
+#define APIC_BASE_MASK 0xfffffffff000
+};
+
+struct cpuid {
+    uint32_t a, b, c, d;
+};
+
+static inline void
+cpuid(uint64_t which, struct cpuid *regs)
+{
+    uint32_t eax = (uint32_t)which, ecx = (uint32_t)(which >> 32);
+    __asm__ __volatile__(
+        "cpuid"
+        : "=a"(regs->a), "=b"(regs->b),
+          "=c"(regs->c), "=d"(regs->d)
+        : "a"(eax), "c"(ecx));
+}
+
+enum cpuid_which {
+    CPUID_BASIC   = 0x00,
+    CPUID_VERSION = 0x01,
 };
 
 /* x86-64-system S3.4.5 */

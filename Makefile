@@ -13,7 +13,7 @@ DISK := $(BUILD_EFI)/disk.img
 .PHONY: disk
 disk: $(DISK)
 
-KERNEL_CC := ./cross/bin/x86_64-elf-gcc
+KERNEL_CC := ./.cross/bin/x86_64-elf-gcc
 
 CPPFLAGS += -MMD -MP -iquote include -I$(HOME)/.local/include/efi \
 	-I$(HOME)/.local/include/efi/x86_64 -DGNU_EFI_USE_MS_ABI
@@ -26,7 +26,9 @@ KERNEL_CFLAGS += -ffreestanding -fPIE -mno-red-zone -mno-mmx -mno-sse -mno-sse2
 KERNEL_CPPFLAGS += -D_KERNEL
 ifneq ($(KERNEL_DEBUG),)
 KERNEL_CPPFLAGS += -D_KERNEL_DEBUG=$(KERNEL_DEBUG)
-KERNEL_CFLAGS += -O0 -g3
+KERNEL_CFLAGS += -O0
+#KERNEL_CFLAGS += -fno-inline -Wno-error=inline
+KERNEL_CFLAGS += -g3 -fstack-protector
 KERNEL_ASFLAGS += -g3
 endif
 KERNEL_LDFLAGS += -nostdlib -static-pie -Wl,-static,-pie,--no-dynamic-linker \
@@ -210,8 +212,8 @@ $(BUILD_TEST)/introspect: $(addprefix $(BUILD_TEST)/, \
 $(BUILD_TEST)/gen-vectors: $(addprefix $(BUILD_TEST)/, test/gen-vectors.o)
 	$(CC) $(CFLAGS) $(TEST_CFLAGS) $(TEST_LDFLAGS) -o $@ $^
 
-tags: $(SOURCES) $(shell find . -name "*.h" -not -path "./cross/*")
-	ctags --exclude=cross/\* --exclude=\*.json --exclude=Makefile -R .
+tags: $(SOURCES) $(shell find . -name "*.h" -not -path "./.cross/*")
+	ctags --exclude=.cross/\* --exclude=\*.json --exclude=Makefile -R .
 
 .PHONY: all kernel-tree efi-tree test-tree kernel efi tests clean \
 	compile_commands.json qemu-deps qemu print-debug-execs $(FORCE)

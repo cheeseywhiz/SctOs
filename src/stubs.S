@@ -28,10 +28,10 @@ init_segment_selectors:
         /* set ss to kernel data segment in GDT, cs to kernel code segment in
          * GDT */
         /* stack layout according to x86-64-system figure 6-8 */
-        shl     $3, %rdi        /* move data index to segment register format */
-        mov     %rsp, %rax
-        shl     $3, %rsi        /* move code index to segment register format */
         pop     %rcx            /* save return ip */
+        shl     $3, %rdi        /* move data index to segment register format */
+        mov     %rsp, %rax      /* save return rsp */
+        shl     $3, %rsi        /* move code index to segment register format */
         push    %rdi            /* ss */
         push    %rax            /* rsp */
         pushfq                  /* rflags */
@@ -44,6 +44,7 @@ init_segment_selectors:
 .global interrupt_handler_stub
 interrupt_handler_stub:
         pushaq
+        mov     interrupt_magic(%rip), %rsi
         mov     %rsp, %rdi      /* struct interrupt_frame has been constructed
                                  * on the stack */
         call    interrupt_handler

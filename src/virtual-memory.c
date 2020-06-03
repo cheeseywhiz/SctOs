@@ -6,6 +6,7 @@
 #include "opsys/x86.h"
 #include "opsys/bootloader_data.h"
 #include "virtual-memory.h"
+#include "x86.h"
 
 struct free_page {
     struct free_page *next;
@@ -55,6 +56,7 @@ page_table_t* new_address_space(void)
         (uint64_t)bootloader_data->free_memory,
         bootloader_data->n_pages,
         PTE_RW);
+    map_range(address_space, cpu.apic.paddr, cpu.apic.vaddr, 1, PTE_RW);
 
     /* runtime segments */
     for (UINT64 i = 0; i < bootloader_data->NumEntries; ++i) {

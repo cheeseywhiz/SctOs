@@ -1,8 +1,5 @@
 /* this module provides functionality to handle x86 interrupts */
 #pragma once
-
-/* initialize the idt and load it into the idtr */
-void install_idt(void);
-
+#include <stdint.h>
 struct interrupt_frame;
-void interrupt_handler(struct interrupt_frame*);
+void interrupt_handler(struct interrupt_frame*, uint64_t);
