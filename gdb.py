@@ -17,7 +17,7 @@ def main(argv):
     text = str_hex_to_int(text)
     data = str_hex_to_int(data)
     execlp(
-        'gdb', 'gdb',
+        'gdb',
         '-ex', 'set confirm off',
         '-ex', (f'add-symbol-file {debug_loader}'
                 f' {hex(base+text)}'
@@ -25,10 +25,12 @@ def main(argv):
         '-ex', 'set confirm on',
         '-ex', 'set architecture i386:x86-64:intel',
         '-ex', 'target remote :1234',
+        '-ex', 'source hb.gdb',
     )
 
 
 def str_hex_to_int(str_hex):
+    '''convert either '0xdeadbeef' or 'deadbeef' to 0xdeadbeef'''
     return int(str_hex[(2 if len(str_hex) > 2 and str_hex[1] == 'x' else 0):],
                base=16)
 
@@ -42,8 +44,8 @@ def system(cmd):
 
 
 def execlp(file, *args):
-    print(' '.join(args))
-    os.execlp(file, *args)
+    print(' '.join([file, *args]))
+    os.execlp(file, file, *args)
 
 
 if __name__ == '__main__':
