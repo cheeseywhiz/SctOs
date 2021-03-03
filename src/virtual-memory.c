@@ -37,7 +37,7 @@ void* allocate_physical_page(enum app_flags flags)
 }
 
 static void map_range(page_table_t*, uint64_t, uint64_t, uint64_t, uint64_t);
-static void set_vpage_ro(page_table_t*, uint64_t);
+static void remap_ro(page_table_t*, uint64_t);
 
 /* create a new address space according to virtual-memory.md */
 page_table_t* new_address_space(void)
@@ -56,7 +56,10 @@ page_table_t* new_address_space(void)
         (uint64_t)bootloader_data->free_memory,
         bootloader_data->n_pages,
         PTE_RW);
-    map_range(address_space, cpu.apic.paddr, cpu.apic.vaddr, 1, PTE_RW);
+    /* x86-64 system S10.4.1: apic register memory register must be strong
+     * uncaching (UC) */
+    map_range(address_space, cpu.apic.paddr, cpu.apic.vaddr, 1,
+              PTE_RW | PTE_CD);
 
     /* runtime segments */
     for (UINT64 i = 0; i < bootloader_data->NumEntries; ++i) {
@@ -97,7 +100,7 @@ page_table_t* new_address_space(void)
         for (Elf64_Xword i = 0;
                 i < NUM_PAGES(relro->p_vaddr, relro->p_memsz);
                 ++i)
-            set_vpage_ro(address_space,
+            remap_ro(address_space,
                 PAGE_BASE(relro->p_vaddr) + PAGE_SIZE * i);
     }
 
@@ -148,7 +151,8 @@ static void map_page(page_table_t *address_space, uint64_t ppage,
 }
 
 /* turn off the RW flag for the given virtual address */
-void set_vpage_ro(page_table_t *address_space, uint64_t vpage)
+static void
+remap_ro(page_table_t *address_space, uint64_t vpage)
 {
     pte_t *level_4_e = &(*address_space)[PAGE_LEVEL_INDEX(vpage, 4)];
     if (!(*level_4_e & PTE_P))

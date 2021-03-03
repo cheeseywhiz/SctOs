@@ -23,6 +23,8 @@ interrupt_handler(struct interrupt_frame *frame __unused, uint64_t magic)
     case EXC_BP:
         return;
     default:
+        if (EXC_IS_EXCEPTION(frame->interrupt_number))
+            halt();
         BREAK();
         break;
     }

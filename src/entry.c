@@ -1,6 +1,7 @@
 /* this module provides the kernel entry point */
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include "opsys/x86.h"
 #include "opsys/bootloader_data.h"
 #include "opsys/kernel_main.h"
@@ -18,13 +19,15 @@ static __noreturn main2_t main2;
 
 /* uefi enters _start in long mode with the kernel mapped to the higher half and
  * bootloader_data mapped to the physical memory region. */
-void kernel_main(struct bootloader_data *bootloader_data_in)
+void
+kernel_main(struct bootloader_data *bootloader_data_in)
 {
     /* clear bss */
     memset(__bss_start, 0, (size_t)_end - (size_t)__bss_start);
     bootloader_data = bootloader_data_in;
 
     init_cpu();
+    int3();
 
     /* start off with some initial memory */
     for (uint64_t i = 0; i < bootloader_data->n_pages; ++i)
@@ -39,12 +42,12 @@ void kernel_main(struct bootloader_data *bootloader_data_in)
     __builtin_unreachable();
 }
 
-void main2(void)
+static void
+main2(void)
 {
-    page_table_t *kernel_address_space = new_address_space();
-    set_cr3((uint64_t)kernel_address_space - bootloader_data->paddr_base);
-    interrupt(40);
-    int3();
+    cpu.address_space = new_address_space();
+    set_cr3((uint64_t)cpu.address_space - bootloader_data->paddr_base);
+    init_apic();
     BREAK();
     uefi_call_wrapper(bootloader_data->RT->ResetSystem, 4,
         EfiResetShutdown, EFI_SUCCESS, 0, NULL);

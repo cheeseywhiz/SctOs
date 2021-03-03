@@ -152,6 +152,16 @@ read_msr(uint32_t which_msr)
     return ((uint64_t)edx << 32) | eax;
 }
 
+static inline uint64_t
+write_msr(uint32_t which_msr, uint64_t value)
+{
+    uint32_t eax = (uint32_t)value, edx = (uint32_t)(value >> 32);
+    __asm__ __volatile__(
+        "wrmsr"
+        :: "c"(which_msr), "a"(eax), "d"(edx));
+    return value;
+}
+
 /* x86-64-msr page 2-45 */
 #define IA32_EFER 0xc0000080
 enum ia32_efer_flags {
@@ -168,6 +178,30 @@ enum ia32_apic_base_flags {
     APIC_BASE_x2APIC = 1 << 9,  /* x2APIC enable */
     APIC_BASE_GLOBAL = 1 << 11, /* global enable */
 #define APIC_BASE_MASK 0xfffffffff000
+};
+
+/* x86-64-msr page 2-20
+ * x86-64-system table 11-11 describes how PAT entries are referenced by page
+ * table entries */
+#define IA32_PAT 0x277
+typedef union {
+    uint64_t n; /* number for loading */
+    struct {
+        uint8_t attributes : 3;
+        uint8_t reserved : 5;
+    } t[8]; /* table for manipulating */
+} ia32_pat_t;
+
+/* x86-64-system table 11-10 */
+enum page_attributes {
+    PA_UC,  /* uncacheable (UC) */
+    PA_WC,  /* write-combining */
+    PA_RES2, /* reserved */
+    PA_RES3,
+    PA_WT,  /* write-through */
+    PA_WP,  /* write-protect */
+    PA_WB,  /* write-back */
+    PA_UCM, /* uncached (UC-) */
 };
 
 struct cpuid {
@@ -188,6 +222,21 @@ cpuid(uint64_t which, struct cpuid *regs)
 enum cpuid_which {
     CPUID_BASIC   = 0x00,
     CPUID_VERSION = 0x01,
+};
+
+/* x86-64-system S11.12.1 */
+enum cpuid_version_a_features {
+    CPUID_PAT = 1 << 16, /* page attribute table */
+};
+
+/* instruction set figure 3-7: version ecx register */
+enum cpuid_version_c_features {
+    CPUID_x2APIC = 1 << 21, /* x2APIC exists */
+};
+
+/* instruction set figure 3-8: version edx register */
+enum cpuid_version_d_features {
+    CPUID_APIC = 1 << 9, /* APIC exists */
 };
 
 /* x86-64-system S3.4.5 */

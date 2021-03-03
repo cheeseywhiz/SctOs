@@ -47,8 +47,8 @@ enum page_table_entry_flags {
     PTE_CD = 1 << 4, /* cache disable */
     PTE_A  = 1 << 5, /* accessed */
     PTE_D  = 1 << 6, /* dirty */
-    PTE_AT = 1 << 7, /* level 1: attribute table */
-    PTE_PS = 1 << 7, /* level 3, 2: page size */
+    PTE_AT = 1 << 7, /* level 1: reference high PAT entries 4-7 */
+    PTE_PS = 1 << 7, /* level 3, 2: page size. keep 0 for 4kb pages. */
                      /* level 4: reserved */
     PTE_G  = 1 << 8, /* global */
 #define PTE_ADDR_MASK 0xfffffffff000 /* physical address to next paging level */

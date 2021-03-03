@@ -1,8 +1,10 @@
 /* this module provides kernel routines that are close to the x86-64 cpu */
 #include <stdint.h>
+#include <stdbool.h>
 #include "opsys/x86.h"
 #include "opsys/bootloader_data.h"
 #include "opsys/virtual-memory.h"
+#include "util.h"
 #include "gdt.h"
 #include "stubs.h"
 #include "interrupts.h"
@@ -10,10 +12,22 @@
 
 struct x86_64_cpu cpu;
 
-static void init_apic(void);
 /* alignment not necessary, but it is a page-sized table */
 static idt_t idt __aligned(PAGE_SIZE);
 static void init_idt(void);
+
+/* x86-64-system table 11-11 */
+static ia32_pat_t page_attribute_table = { .t = {
+    /* modified table 11-12 to not use UC-, since we don't own the MTRRs yet */
+    { PA_WB, 0 }, /* !AT !CD !WT */
+    { PA_WT, 0 }, /* !AT !CD  WT */
+    { PA_UC, 0 }, /* !AT  CD !WT */
+    { PA_UC, 0 }, /* !AT  CD  WT */
+    { PA_WB, 0 }, /*  AT !CD !WT */
+    { PA_WT, 0 }, /*  AT !CD  WT */
+    { PA_UC, 0 }, /*  AT  CD !WT */
+    { PA_UC, 0 }, /*  AT  CD  WT */
+} };
 
 void
 init_cpu(void)
@@ -22,19 +36,16 @@ init_cpu(void)
     init_segment_selectors(GDTI_KERNEL_DATA, GDTI_KERNEL_CODE);
     init_idt();
     set_idt(idt);
-    init_apic();
-}
 
-static void
-init_apic(void)
-{
+    uint64_t pat_flat __unused = *(uint64_t*)&page_attribute_table;
+    write_msr(IA32_PAT, pat_flat);
+
+    /* set information for paging. the rest of apic initialization occurs after
+     * paging is final. */
     uint64_t apic_base = read_msr(IA32_APIC_BASE);
     uint64_t base_addr = apic_base & APIC_BASE_MASK;
-    struct cpuid version;
-    cpuid(CPUID_VERSION, &version);
     cpu.apic.paddr = base_addr;
     cpu.apic.vaddr = bootloader_data->mmio_base - PAGE_SIZE;
-    cpu.apic.id = (uint8_t)(version.b >> 24);
 }
 
 /* defined in gen/vectors.S */
@@ -60,4 +71,40 @@ init_idt(void)
         /* present, callable by ring 0, interrupt gate */
         (*ent)[0] |= SEGDESC_P | SEGDESC_SET_DPL(0) | SDT_INTR;
     }
+}
+
+static void init_apic_impl(void);
+
+static void
+init_apic_impl(void)
+{
+    /* verify that apic may be used */
+    struct cpuid version;
+    cpuid(CPUID_VERSION, &version);
+    bool pat_exists = version.a & CPUID_PAT;
+    bool x2apic_exists = version.c & CPUID_x2APIC;
+    bool apic_exists = version.d & CPUID_APIC;
+    if (!pat_exists || !apic_exists || !x2apic_exists)
+        halt();
+
+    ia32_pat_t pat __unused = { .n = read_msr(IA32_PAT) };
+
+    /* XXX: why does this memory access cause gdb to lose single step? */
+    BREAK();
+    uint32_t lapic_version = *(uint32_t volatile*)(cpu.apic.vaddr + 0x30);
+    BREAK();
+    uint8_t lapic_version_num = (uint8_t)lapic_version;
+    /* versions outside of this range do not correspond to apic existence */
+    if (!IN_RANGE(0x10, 0x15 + 1, lapic_version_num))
+        halt();
+
+    uint8_t max_lvt __unused = (uint8_t)(lapic_version >> 16);
+    bool can_suppress_eoi __unused = lapic_version & (1 << 24);
+}
+
+__stack_protector
+void
+init_apic(void)
+{
+    init_apic_impl();
 }

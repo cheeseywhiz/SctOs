@@ -1,17 +1,14 @@
 # test build is in tree, kernel and efi loader are out of tree
-BUILD_KERNEL ?= ./build/kernel
-BUILD_EFI ?= ./build/efi
-BUILD_TEST ?= .
-BUILD_TREE += ./build
+BUILD ?= ./build
+BUILD_KERNEL ?= $(BUILD)/kernel
+BUILD_EFI ?= $(BUILD)/efi
+BUILD_TEST ?= $(BUILD)/..
+BUILD_TREE += $(BUILD)
 
 OVMF_CODE := /usr/share/edk2-ovmf/x64/OVMF_CODE.fd
 OVMF_VARS := /usr/share/edk2-ovmf/x64/OVMF_VARS.fd
 BUILD_OVMF_VARS := $(BUILD_EFI)/OVMF_VARS.fd
 DISK := $(BUILD_EFI)/disk.img
-
-# default rule needs to be pretty high up
-.PHONY: disk
-disk: $(DISK)
 
 KERNEL_CC := ./.cross/bin/x86_64-elf-gcc
 
@@ -41,8 +38,9 @@ EFI_CFLAGS += -mno-red-zone -mno-avx -fshort-wchar -fno-strict-aliasing \
 	-Wno-write-strings -Wno-redundant-decls -Wno-strict-prototypes
 ifneq ($(EFI_DEBUG),)
 EFI_CPPFLAGS += -D_EFI_DEBUG=$(EFI_DEBUG)
-EFI_CFLAGS += -O0 -g3
-EFI_ASFLAGS += -g
+EFI_CFLAGS += -O0
+EFI_CFLAGS += -g3
+EFI_ASFLAGS += -g3
 endif
 EFI_CRT := $(HOME)/.local/lib/crt0-efi-x86_64.o
 EFI_LDSCRIPT := $(HOME)/.local/lib/elf_x86_64_efi.lds
@@ -53,7 +51,7 @@ EFI_LDLIBS := -lefi -lgnuefi -lgcc
 TEST_CFLAGS += -O0 -ggdb
 TEST_LDFLAGS += -Wl,--hash-style=sysv
 
-QEMUDEPS := $(BUILD_OVMF_VARS) $(DISK) efi
+QEMUDEPS := efi $(BUILD_OVMF_VARS) $(DISK)
 QEMUFLAGS += \
 	-drive if=pflash,format=raw,unit=0,file=$(OVMF_CODE),readonly=on \
 	-drive if=pflash,format=raw,unit=1,file=$(BUILD_OVMF_VARS) \
@@ -70,6 +68,13 @@ QEMUFLAGS += \
 
 ifneq ($(EFI_DEBUG)$(KERNEL_DEBUG),)
 QEMUFLAGS += -S
+endif
+
+# default rule needs to be pretty high up
+.PHONY: qemu-deps
+qemu-deps: $(QEMUDEPS)
+ifneq ($(EFI_DEBUG)$(KERNEL_DEBUG),)
+	@echo qemu ready
 endif
 
 KERNEL_DIRS := lib src
@@ -215,10 +220,10 @@ $(BUILD_TEST)/gen-vectors: $(addprefix $(BUILD_TEST)/, test/gen-vectors.o)
 tags: $(SOURCES) $(shell find . -name "*.h" -not -path "./.cross/*")
 	ctags --exclude=.cross/\* --exclude=\*.json --exclude=Makefile -R .
 
-.PHONY: all kernel-tree efi-tree test-tree kernel efi tests clean \
+.PHONY: all kernel-tree efi-tree test-tree kernel efi disk tests clean \
 	compile_commands.json qemu-deps qemu print-debug-execs $(FORCE)
 
-all: tests kernel efi disk
+all: tests kernel efi disk qemu-deps
 
 kernel-tree:
 	@mkdir -p $(KERNEL_TREE)
@@ -237,6 +242,8 @@ else
 efi: $(EFI_EXEC)
 endif
 
+disk: $(DISK)
+
 tests: $(TEST_EXECS)
 
 # remove files, then do a post-order removal of the build tree
@@ -251,11 +258,6 @@ compile_commands.json:
 	make clean
 	$(RM) $@
 	bear make all -j5
-
-qemu-deps: $(QEMUDEPS)
-ifneq ($(EFI_DEBUG)$(KERNEL_DEBUG),)
-	@echo qemu ready
-endif
 
 qemu: qemu-deps
 	qemu-system-x86_64 $(QEMUFLAGS)

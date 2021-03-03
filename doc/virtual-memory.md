@@ -15,6 +15,10 @@
   new LoaderData segments. however, the memory will not be accessible, since
   only the memory allocated before step 2 will be paged in to the boot page
   tables. this does not currently seem an issue.
+* it appears uefi will leave open approximately `3GB-4GB` so we are free to use
+  this space for apic, for example, which resides just below `4GB` just below
+  whatever the firmware has put there. (this space is unmanaged by the uefi
+  memory map which means it will be unmanaged by kernel allocators.)
 
 ## new address space
 note: the bootloader repeats much of this work.
