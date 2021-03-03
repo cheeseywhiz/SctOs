@@ -88,16 +88,16 @@ make_load_option(const EFI_LOAD_OPTION *Header, const CHAR16 *Description,
     return buf;
 }
 
-/* allocate and zero one page of physical memory */
+/* allocate and zero pages of physical memory */
 UINT64
-allocate_page(void)
+allocate_pages(UINT64 n_pages)
 {
     EFI_STATUS Status;
     UINT64 Page;
     if (_EFI_ERROR(Status = uefi_call_wrapper(BS->AllocatePages, 4,
-            AllocateAnyPages, EfiLoaderData, 1, &Page)))
+            AllocateAnyPages, EfiLoaderData, n_pages, &Page)))
         EXIT_STATUS(Status, L"AllocatePages");
-    memset((void*)Page, 0, PAGE_SIZE);
+    memset((void*)Page, 0, n_pages * PAGE_SIZE);
     return Page;
 }
 

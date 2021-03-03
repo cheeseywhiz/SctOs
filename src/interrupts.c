@@ -13,7 +13,7 @@
 const uint64_t interrupt_magic = 0xD1D1D1D1D1D1D1D1;
 
 void
-interrupt_handler(struct interrupt_frame *frame __unused, uint64_t magic)
+interrupt_handler(struct interrupt_frame *frame, uint64_t magic)
 {
     /* to catch when gdb jumps here for odd reasons */
     if (magic != interrupt_magic)

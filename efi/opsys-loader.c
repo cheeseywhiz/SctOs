@@ -90,15 +90,13 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
 
     /* 1. allocate boot memory: memory that will be accessible with boot
      *    page tables */
-    UINT64 new_stack = allocate_page();
-    struct bootloader_data *bootloader_data = (void*)allocate_page();
+    UINT64 new_stack = allocate_pages(1);
+    struct bootloader_data *bootloader_data = (void*)allocate_pages(2);
     /* doesn't really matter how much we start out with, since they're all
      * immediately added to the free list by the os */
     bootloader_data->n_pages = 32;
-    if (_EFI_ERROR(Status = uefi_call_wrapper(BS->AllocatePages, 4,
-            AllocateAnyPages, EfiLoaderData, bootloader_data->n_pages,
-            (UINT64*)&bootloader_data->free_memory)))
-        EXIT_STATUS(Status, L"AllocatePages");
+    bootloader_data->free_memory =
+        (void*)allocate_pages(bootloader_data->n_pages);
 
     /* 2. acquire preliminary memory map: Loader segments in this map are paged
      *    in to the boot page tables */
@@ -127,13 +125,15 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
     FreePool(MemoryMap);
 
     /* 5. acquire final memory map */
-    UINT64 MMSize = PAGE_SIZE - sizeof(*bootloader_data);
+    /* size of bootloader_data allocation *
+     *              V-----------V         */
+    UINT64 MMSize = 2 * PAGE_SIZE - sizeof(*bootloader_data);
     if (_EFI_ERROR(Status = uefi_call_wrapper(BS->GetMemoryMap, 5,
             &MMSize, bootloader_data->MemoryMap, &MapKey, &DescriptorSize,
             &DescriptorVersion)))
         EXIT_STATUS(Status, L"GetMemoryMap");
     bootloader_data->NumEntries = MMSize / sizeof(*bootloader_data->MemoryMap);
-    
+
     /* 6. ExitBootServices */
     if (_EFI_ERROR(Status = uefi_call_wrapper(BS->ExitBootServices, 2,
             ImageHandle, MapKey)))
@@ -189,6 +189,7 @@ efi_main2(page_table_t *boot_page_table,
     do_relocations(dynamic);
 
     /* 11. jump to kernel */
+    BREAK();
     kernel_main_t *kernel_main = (kernel_main_t*)bootloader_data->ehdr->e_entry;
     kernel_main(bootloader_data);
     __builtin_unreachable();
@@ -426,7 +427,7 @@ prepare_boot_page_tables(EFI_MEMORY_DESCRIPTOR *MemoryMap, UINT64 NumEntries,
     *PaddrBase = KERNEL_BASE - *PaddrSize;
     *MmioBase = *PaddrBase - *MmioSize;
 
-    page_table_t *boot_page_table = (page_table_t*)allocate_page();
+    page_table_t *boot_page_table = (page_table_t*)allocate_pages(1);
 
     /* identity map Loader segments */
     for (UINT64 i = 0; i < NumEntries; ++i) {
@@ -489,17 +490,17 @@ map_page(page_table_t *boot_page_table, UINT64 PPage, UINT64 VPage,
     /* x86-64-system figure 4-8 */
     pte_t *pml4e = &(*boot_page_table)[PAGE_LEVEL_INDEX(VPage, 4)];
     if (!(*pml4e & PTE_P))
-        *pml4e = allocate_page() | PTE_P | PTE_RW;
+        *pml4e = allocate_pages(1) | PTE_P | PTE_RW;
 
     page_table_t *page_dir_ptr_table = (page_table_t*)(*pml4e & PTE_ADDR_MASK);
     pte_t *pdpte = &(*page_dir_ptr_table)[PAGE_LEVEL_INDEX(VPage, 3)];
     if (!(*pdpte & PTE_P))
-        *pdpte = allocate_page() | PTE_P | PTE_RW;
+        *pdpte = allocate_pages(1) | PTE_P | PTE_RW;
 
     page_table_t *page_directory = (page_table_t*)(*pdpte & PTE_ADDR_MASK);
     pte_t *pde = &(*page_directory)[PAGE_LEVEL_INDEX(VPage, 2)];
     if (!(*pde & PTE_P))
-        *pde = allocate_page() | PTE_P | PTE_RW;
+        *pde = allocate_pages(1) | PTE_P | PTE_RW;
 
     page_table_t *page_table = (page_table_t*)(*pde & PTE_ADDR_MASK);
     pte_t *pte = &(*page_table)[PAGE_LEVEL_INDEX(VPage, 1)];

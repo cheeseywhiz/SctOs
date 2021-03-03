@@ -18,8 +18,8 @@ static void print_guid(const CHAR16*, const EFI_GUID*);
 void
 enumerate_efi_vars(EFI_DEVICE_PATH *BootDevp, UINT16 DevpSize)
 {
-    CHAR16 *Name = (void*)allocate_page();
-    void *Data = (void*)allocate_page();
+    CHAR16 *Name = (void*)allocate_pages(1);
+    void *Data = (void*)allocate_pages(1);
     EFI_GUID Guid;
     BOOLEAN Boot0004Exists = FALSE;
     Print(L"efivars:\n");

@@ -20,8 +20,12 @@ __noreturn void exit_status(const CHAR16*, int line, EFI_STATUS, const CHAR16*,
 #define EXIT_STATUS(status, fmt, ...) \
     exit_status(_(__FILE__), __LINE__, (status), (fmt), ##__VA_ARGS__)
 #define EFI_ASSERT(cond) \
-    if (!(cond)) \
-        EXIT_STATUS(EFI_ABORTED, L"Failed assertion: %s", _(#cond))
+    do { \
+        if (!(cond)) { \
+            BREAK(); \
+            EXIT_STATUS(EFI_ABORTED, L"Failed assertion: %s", _(#cond)); \
+        } \
+    } while (0)
 
 /* convert 8-bit string to 16-bit string */
 CHAR16* a2u(const char*a);
@@ -52,7 +56,7 @@ EFI_LOAD_OPTION* make_load_option(const EFI_LOAD_OPTION*, const CHAR16*,
                                   EFI_DEVICE_PATH*, UINT16, UINT64*);
 
 /* allocate and zero one page of physical memory */
-UINT64 allocate_page(void);
+UINT64 allocate_pages(UINT64 n_pages);
 
 #define _ERROR_STR(suffix) [(EFI_ ## suffix) & ~EFI_ERROR_MASK] = _(#suffix)
 #define EFI_ERROR_STR(status) (efi_error_str[(status) & ~EFI_ERROR_MASK])

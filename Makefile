@@ -24,7 +24,7 @@ CFLAGS += -Werror -Wall -Wextra -pedantic -Wshadow -Wpointer-arith \
 	-Wstrict-prototypes
 KERNEL_CFLAGS += -ffreestanding -fPIE -mno-red-zone -mno-mmx -mno-sse -mno-sse2
 KERNEL_CPPFLAGS += -D_KERNEL
-ifneq ($(KERNEL_DEBUG),)
+ifeq ($(KERNEL_DEBUG),y)
 KERNEL_CPPFLAGS += -D_KERNEL_DEBUG=$(KERNEL_DEBUG)
 KERNEL_CFLAGS += -O0
 #KERNEL_CFLAGS += -fno-inline -Wno-error=inline
@@ -39,7 +39,7 @@ KERNEL_LDLIBS := -lgcc
 EFI_CFLAGS += -mno-red-zone -mno-avx -fshort-wchar -fno-strict-aliasing \
 	-ffreestanding -fno-stack-protector -fno-merge-constants -fPIC \
 	-Wno-write-strings -Wno-redundant-decls -Wno-strict-prototypes
-ifneq ($(EFI_DEBUG),)
+ifeq ($(EFI_DEBUG),y)
 EFI_CPPFLAGS += -D_EFI_DEBUG=$(EFI_DEBUG)
 EFI_CFLAGS += -O0 -g3
 EFI_ASFLAGS += -g
@@ -68,7 +68,9 @@ QEMUFLAGS += \
 	-no-reboot \
 	-s \
 
-ifneq ($(EFI_DEBUG)$(KERNEL_DEBUG),)
+ifeq ($(EFI_DEBUG),y)
+QEMUFLAGS += -S
+else ifeq ($(KERNEL_DEBUG),y)
 QEMUFLAGS += -S
 endif
 
@@ -129,7 +131,7 @@ DEPS := $(KERNEL_DEPS) $(EFI_DEPS) $(TEST_DEPS)
 $(KERNEL): $(KERNEL_LDSCRIPT) $(KERNEL_OBJECTS)
 	$(KERNEL_CC) $(CFLAGS) $(KERNEL_CFLAGS) $(KERNEL_LDFLAGS) -o $@ \
 		$(KERNEL_OBJECTS) $(KERNEL_LDLIBS)
-ifneq ($(KERNEL_DEBUG),)
+ifeq ($(KERNEL_DEBUG),y)
 	@echo kernel debug ready
 endif
 
@@ -157,7 +159,7 @@ $(EFI_EXEC): $(EFI_SO)
 $(EFI_DEBUG_EXEC): $(EFI_SO)
 	objcopy -j .text -j .sdata -j .data -j .dynamic -j .dynsym -j .rel* \
 		-j .debug* --target=efi-app-x86_64 $< $@
-ifneq ($(EFI_DEBUG),)
+ifeq ($(EFI_DEBUG),y)
 	@echo efi debug ready
 endif
 
@@ -231,7 +233,7 @@ test-tree:
 
 kernel: $(KERNEL)
 
-ifneq ($(EFI_DEBUG),)
+ifeq ($(EFI_DEBUG),y)
 efi: $(EFI_EXEC) $(EFI_DEBUG_EXEC)
 else
 efi: $(EFI_EXEC)
@@ -250,10 +252,12 @@ clean:
 compile_commands.json:
 	make clean
 	$(RM) $@
-	bear make all -j5
+	bear -- make EFI_DEBUG=y KERNEL_DEBUG=y all -j5
 
 qemu-deps: $(QEMUDEPS)
-ifneq ($(EFI_DEBUG)$(KERNEL_DEBUG),)
+ifeq ($(EFI_DEBUG),y)
+	@echo qemu ready
+else ifeq ($(KERNEL_DEBUG),y)
 	@echo qemu ready
 endif
 
